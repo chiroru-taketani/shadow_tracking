@@ -344,8 +344,8 @@ void display1()
     cv::flip(shadowAreaImage, shadowAreaImage, 0);
     cv::cvtColor(shadowAreaImage, shadowAreaGrayImage, cv::COLOR_BGR2GRAY);
     cv::imshow("shadowAreaImage", shadowAreaGrayImage);
-    cv::imwrite("shadow_tmp.png", shadowAreaGrayImage);
-    rename("shadow_tmp.png", "shadow.png");
+    cv::imwrite("../ShadowImg/shadow_tmp.png", shadowAreaGrayImage);
+    rename("../ShadowImg/shadow_tmp.png", "../ShadowImg/Shadow.png");
 
 }
 
