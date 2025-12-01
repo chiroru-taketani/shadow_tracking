@@ -143,7 +143,7 @@ void display()
 {
     //---- [1] LiDARデータをOpenGLで描画 ----
     // 影マップ画像の読み込み (毎フレーム)
-    shadowMap = cv::imread("../ShadowImg/ShadowArea.png", cv::IMREAD_GRAYSCALE);
+    // shadowMap = cv::imread("../ShadowImg/ShadowArea.png", cv::IMREAD_GRAYSCALE);
     if (!shadowMap.empty()) {
         //cv::rotate(shadowMap, shadowMap, cv::ROTATE_90_COUNTERCLOCKWISE);
         if (shadowMap.size() != scanImage.size()) {
