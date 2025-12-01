@@ -31,8 +31,8 @@ float easing_factor;
 
 // easing_factorの最小値と最大値を設定
 // この値を調整することで、速度の変化具合をカスタマイズできます。
-const float MIN_EASING = 0.05; // 最も遅い速度 (target_y = 0 の時)
-const float MAX_EASING = 0.6;  // 最も速い速度 (target_y = 32 の時)
+const float MIN_EASING = 0.1; // 最も遅い速度 (target_y = 0 の時)
+const float MAX_EASING = 0.9;  // 最も速い速度 (target_y = 32 の時)
 
 // --- ▲▲▲ 変更・追加した変数 ▲▲▲ ---
 
@@ -130,6 +130,6 @@ void loop() {
   drawCircle( (int16_t)current_x, (int16_t)current_y );
   
   // アニメーションがスムーズに見えるように、少しだけ待機します
-  delay(50);
+  delay(20);
   // --- ▲▲▲ アニメーション処理 ▲▲▲ ---
 }

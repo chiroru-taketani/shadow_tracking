@@ -7,6 +7,11 @@
 #include <opencv2/opencv.hpp>  //OpenCV関連ヘッダ
 
 //定数宣言
+#include <termios.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+//定数宣言
 #define TEX_SIZE 512  //テクスチャサイズ
 
 //三次元ベクトル構造体
@@ -19,6 +24,7 @@ typedef struct _Vec_3D
 
 //関数名の宣言
 void initGL();
+int initSerial(const char *portName); // シリアル初期化関数宣言
 void display0();
 void display1();
 void display2();
@@ -66,15 +72,75 @@ static double genfunc[][4] = {
 
 double rDisp = 1.0;
 
+// 光源操作モード関連
+bool lightControlMode = false;
+int noObjectTimer = 0;
+const int NO_OBJECT_LIMIT = 60; // 約2秒 (30fps想定で60フレーム)
+
+#include <vector>
+#include <algorithm>
+
+// ... (existing code) ...
+
+// 外れ値・ジャンプ除去用
+double prev_fx = -9999.0, prev_fy = -9999.0;
+const double JUMP_THRESHOLD = 5.0;
+
+// メディアンフィルタ用
+std::vector<double> history_fx;
+std::vector<double> history_fy;
+const int MEDIAN_WINDOW_SIZE = 5;
+
+// アダプティブスムージング用
+double smooth_fx = -9999.0, smooth_fy = -9999.0;
+// const double SMOOTH_ALPHA = 0.5; // 固定値は使用しない
+
+// シリアル通信用
+int serialFD = -1;
+const char* SERIAL_PORT = "/dev/cu.usbserial-10"; // 自動検出したポート
+const int BAUD_RATE = 115200;
+
 //メイン関数
 int main(int argc, char *argv[])
 {
     glutInit(&argc, argv);  //OpenGL/GLUTの初期化
     initGL();  //初期設定
     
+    // シリアルポート初期化
+    serialFD = initSerial(SERIAL_PORT);
+    if (serialFD == -1) {
+        printf("Failed to open serial port: %s\n", SERIAL_PORT);
+    } else {
+        printf("Serial port opened: %s\n", SERIAL_PORT);
+    }
+
     glutMainLoop();  //イベント待ち無限ループ
     
+    // 終了処理 (glutMainLoopからは戻らないが、念のため)
+    if (serialFD != -1) close(serialFD);
+
     return 0;
+}
+
+// シリアル初期化関数
+int initSerial(const char *portName) {
+    int fd = open(portName, O_RDWR | O_NOCTTY | O_NDELAY);
+    if (fd == -1) {
+        return -1;
+    }
+
+    struct termios options;
+    tcgetattr(fd, &options);
+    cfsetispeed(&options, B115200);
+    cfsetospeed(&options, B115200);
+    options.c_cflag |= (CLOCAL | CREAD);
+    options.c_cflag &= ~PARENB;
+    options.c_cflag &= ~CSTOPB;
+    options.c_cflag &= ~CSIZE;
+    options.c_cflag |= CS8;
+    tcsetattr(fd, TCSANOW, &options);
+
+    return fd;
 }
 
 //初期化関数
@@ -565,51 +631,189 @@ void timer0(int value)
     glutSetWindow(winID[2]);
     glutPostRedisplay();  //ディスプレイイベント強制発生
 
+    // scanarea.txtの読み込み
+    FILE *LidarScanArea = fopen("../LIDAR1b/scanarea.txt", "r");
+    double lScanW = 16.0, lScanH = 40.0, lReso = 0.2; // デフォルト値
+    if (LidarScanArea != NULL) {
+        fscanf(LidarScanArea, "%lf,%lf,%lf", &lScanW, &lScanH, &lReso);
+        fclose(LidarScanArea);
+    }
+
     // footpoint.txtの読み込み
     FILE *fp = fopen("../LIDAR1b/footpoint.txt", "r");
+
     if (fp != NULL) {
         int numPoints = 0;
         if (fscanf(fp, "%d", &numPoints) != EOF && numPoints > 0) {
+            noObjectTimer = 0; // 物体検知でタイマーリセット
+
             double fx, fy;
             if (fscanf(fp, "%lf,%lf", &fx, &fy) != EOF) {
-                // 座標変換
-                touchPos.x = fx;
-                touchPos.z = fy - scanH * 0.5; // main_cvのy(0~H)をmain0のz(-H/2~H/2)に変換
-                touchPos.y = 0.0;
-                
-                printf("touchPos: %f, %f, %f\n", touchPos.x, touchPos.y, touchPos.z);
+                // 外れ値除去 (fx:幅方向, fy:奥行き方向)
+                // lScanW=16.0(±8.0), lScanH=40.0(0-40.0) なので、それより十分大きい範囲外は無視
+                // if (fabs(fx) > 20.0 || fy < -10.0 || fy > 60.0) {
+                //     // 外れ値無視
+                // }
+                // else {
+                    // メディアンフィルタ処理
+                    fx = fx * -1.0f;
+                    history_fx.push_back(fx);
+                    history_fy.push_back(fy);
+                    if (history_fx.size() > MEDIAN_WINDOW_SIZE) {
+                        history_fx.erase(history_fx.begin());
+                        history_fy.erase(history_fy.begin());
+                    }
 
-                // 光源位置の更新 (motion1と同様の処理)
-                lightVec.x = lightCollPos.x - touchPos.x;
-                lightVec.y = lightCollPos.y - touchPos.y;
-                lightVec.z = lightCollPos.z - touchPos.z;
-                lightVec = vectorNormalize(lightVec);
+                    // 中央値を計算
+                    std::vector<double> sorted_fx = history_fx;
+                    std::vector<double> sorted_fy = history_fy;
+                    std::sort(sorted_fx.begin(), sorted_fx.end());
+                    std::sort(sorted_fy.begin(), sorted_fy.end());
+                    double median_fx = sorted_fx[sorted_fx.size() / 2];
+                    double median_fy = sorted_fy[sorted_fy.size() / 2];
 
-                double t = (lightPos0.z - touchPos.z) / lightVec.z;
-                // lightPos0.zは固定で、x, yを更新する場合
-                // 元のコード: lightPos0.x = touchPos.x+lightVec.x*t;
-                // しかし、元のmotion1ではlightPos0自体を動かしている。
-                // ここでは「影を触って光源を動かす」ロジックを再現する。
-                // lightCollPos (光源が当たるべき場所) と touchPos (影の場所) から
-                // 光源があるべき場所を逆算する？
-                
-                // motion1のロジック:
-                // lightVec = lightCollPos - touchPos (影から衝突点へのベクトル)
-                // t = (lightPos0.z - touchPos.z) / lightVec.z (高さの比率?)
-                // lightPos0.x = touchPos.x + lightVec.x * t
-                
-                // ここで lightPos0.z は変更しない前提で x, y を計算しているように見える
-                
-                if (fabs(lightVec.z) > 0.001) {
-                     double t = (lightPos0.z - touchPos.z) / lightVec.z;
-                     lightPos0.x = touchPos.x + lightVec.x * t;
-                     lightPos0.y = touchPos.y + lightVec.y * t;
-                }
+                    // 急激な変化（ジャンプ）を除去 (メディアン値を使用)
+                    double dist = 0.0;
+                    if (prev_fx != -9999.0) {
+                        dist = sqrt(pow(median_fx - prev_fx, 2) + pow(median_fy - prev_fy, 2));
+                    }
+
+                    if (prev_fx != -9999.0 && dist > JUMP_THRESHOLD) {
+                        // ジャンプとみなして無視
+                        printf("Jump detected! dist: %f\n", dist);
+                    }
+                    else {
+                        // 正常値として更新
+                        prev_fx = median_fx;
+                        prev_fy = median_fy;
+
+                        // アダプティブスムージング処理
+                        if (smooth_fx == -9999.0) {
+                            smooth_fx = median_fx;
+                            smooth_fy = median_fy;
+                        } else {
+                            // 移動距離に応じてAlphaを動的に変更
+                            double move_dist = sqrt(pow(median_fx - smooth_fx, 2) + pow(median_fy - smooth_fy, 2));
+                            double adaptive_alpha;
+                            
+                            // 停止中(dist < 1.0)は強く平滑化(alpha=0.2)、移動中(dist > 5.0)は追従性重視(alpha=0.9)
+                            if (move_dist < 1.0) adaptive_alpha = 0.2;
+                            else if (move_dist > 5.0) adaptive_alpha = 0.9;
+                            else {
+                                // 線形補間
+                                adaptive_alpha = 0.2 + (move_dist - 1.0) * (0.9 - 0.2) / (5.0 - 1.0);
+                            }
+
+                            smooth_fx = smooth_fx * (1.0 - adaptive_alpha) + median_fx * adaptive_alpha;
+                            smooth_fy = smooth_fy * (1.0 - adaptive_alpha) + median_fy * adaptive_alpha;
+                        }
+                    }
+                        
+                        // 変換にはスムージングされた値を使用
+                        double use_fx = smooth_fx;
+                        double use_fy = smooth_fy;
+
+                        // 座標変換
+
+                        double in_min_y = 0.0f;//0
+                        double in_max_y = lScanH ;//40
+                        double out_min_y = -(scanW * 0.5f);//-150
+                        double out_max_y = scanW * 0.5f ;//150
+
+                        use_fy = out_min_y + (use_fy - in_min_y) * (out_max_y - out_min_y) / (in_max_y - in_min_y);
+
+                        
+
+                        //範囲を変換
+                        double in_min_x = -(lScanW * 0.5f);//-8
+                        double in_max_x = lScanW * 0.5f;//8
+                        double out_min_x = - scanH * 0.5f;//-100
+                        double out_max_x = objPos.z ;//30
+                        use_fx = out_min_x + (use_fx - in_min_x) * (out_max_x - out_min_x) / (in_max_x - in_min_x);
+
+                        touchPos.x = use_fy;//footPont.yを　touchPos.xに変換
+
+                        touchPos.z = 0.0 ; // footPoint.xをtouchPos.zに代入
+
+                        touchPos.y = use_fx ;
+                        
+                        printf("touchPos: %f, %f, %f\n", touchPos.x, touchPos.y, touchPos.z);
+
+                        // 影判定
+                        int pX = (int)((touchPos.x * reso) + (scanW * reso * 0.5));
+                        int pY = (int)((touchPos.z * reso) + (scanH * reso * 0.5));
+                        int sVal = -1;
+                        if (!shadowAreaGrayImage.empty() && pX >= 0 && pX < shadowAreaGrayImage.cols && pY >= 0 && pY < shadowAreaGrayImage.rows) {
+                            sVal = shadowAreaGrayImage.at<unsigned char>(pY, pX);
+                        }
+                        printf("LightPos: %.2f, %.2f, %.2f, ShadowVal: %d\n", lightPos0.x, lightPos0.y, lightPos0.z, sVal);
+
+                        // 影に入ったらモードON (閾値は仮に200未満とする)
+                        if (sVal != -1 && sVal < 200) {
+                            lightControlMode = true;
+                        }
+                        
+                        printf("LightControlMode: %s\n", lightControlMode ? "ON" : "OFF");
+
+                        // 光源位置の更新 (モードONの場合のみ)
+                        if (lightControlMode) {
+                            lightVec.x = lightCollPos.x - touchPos.x;
+                            lightVec.y = lightCollPos.y - touchPos.y;
+                            lightVec.z = lightCollPos.z - touchPos.z;
+                            lightVec = vectorNormalize(lightVec);
+
+                            if (fabs(lightVec.z) > 0.001) {
+                                 double t = (lightPos0.z - touchPos.z) / lightVec.z;
+                                 lightPos0.x = (touchPos.x + lightVec.x * t);
+                                 lightPos0.y = (touchPos.y + lightVec.y * t );
+
+                                // シリアル送信
+                                if (serialFD != -1) {
+                                    char buf[64];
+                                    //LEDパネル用に変換
+
+                                    double in_min_x = -350;//-350
+                                    double in_max_x = 350;//350
+                                    double out_min_x = 0.0f;
+                                    double out_max_x = 64.0f;//64
+
+                                    double serial_x = out_min_x + (lightPos0.x - in_min_x) * (out_max_x - out_min_x) / (in_max_x - in_min_x);
+
+                                    double in_min_y = -70.0f;//-70
+                                    double in_max_y = 233.0f ;//233
+                                    double out_min_y = 32.0f;//32
+                                    double out_max_y = 0.0f;//0
+
+                                    double serial_y = out_min_y + (lightPos0.y - in_min_y) * (out_max_y - out_min_y) / (in_max_y - in_min_y);
+
+                                    int len = snprintf(buf, sizeof(buf), "%.2f,%.2f\n", serial_x, serial_y);
+                                    write(serialFD, buf, len);
+                                    printf("Sent: %s", buf);
+                                }
+                            }
+                        }
+
+                       
+                    }
+                // }
             }
+        } else {
+            // 物体なし or 読み込み失敗
+            noObjectTimer++;
+            if (noObjectTimer > NO_OBJECT_LIMIT) {
+                lightControlMode = false; // 一定時間物体なしでモードOFF
+            }
+            // 物体なしになったら前回の座標をリセット
+            prev_fx = -9999.0;
+            prev_fy = -9999.0;
+            smooth_fx = -9999.0;
+            smooth_fy = -9999.0;
+            history_fx.clear();
+            history_fy.clear();
         }
         fclose(fp);
     }
-}
+
 
 //ベクトルの外積計算
 Vec_3D normcrossprod(Vec_3D v1, Vec_3D v2)

@@ -215,8 +215,9 @@ void display()
     for (int i = 0; i < contours.size(); i++)
     {                                           // 検出された全ての輪郭についてループ
         double area = contourArea(contours[i]); // 輪郭の面積を計算
-        if (area > 60)
+        if (area > 80)
         { // 面積が70ピクセルより大きいものだけを物体として認識 (ノイズ除去)
+            
             // 輪郭のモーメントを計算して、重心を求める
             cv::Moments m = cv::moments(contours[i]);
             cv::Point p = cv::Point(m.m10 / m.m00, m.m01 / m.m00); // 重心のピクセル座標(x, y)
