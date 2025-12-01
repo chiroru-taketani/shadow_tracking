@@ -92,7 +92,7 @@ void initGL()
     glEnable(GL_ALPHA_TEST);  //アルファテスト有効化
     glAlphaFunc(GL_GREATER, 0.1);  //アルファ値比較関数の設定
     //視点関係 照明とカメラの位置⭐︎
-    lightPos0.x = 0.0; lightPos0.y = 100.0; lightPos0.z = 70.0;
+    lightPos0.x = 0.0; lightPos0.y = 100.0; lightPos0.z = 100.0;
 
     //描画ウィンドウ生成1（客観視点映像の生成）
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH | GLUT_DOUBLE);  //ディスプレイモードの指定
@@ -344,8 +344,8 @@ void display1()
     cv::flip(shadowAreaImage, shadowAreaImage, 0);
     cv::cvtColor(shadowAreaImage, shadowAreaGrayImage, cv::COLOR_BGR2GRAY);
     cv::imshow("shadowAreaImage", shadowAreaGrayImage);
-    cv::imwrite("../ShadowImg/shadow_tmp.png", shadowAreaGrayImage);
-    rename("../ShadowImg/shadow_tmp.png", "../ShadowImg/Shadow.png");
+    cv::rotate(shadowAreaGrayImage, shadowAreaGrayImage, cv::ROTATE_90_COUNTERCLOCKWISE);
+    cv::imwrite("../ShadowImg/ShadowArea.png", shadowAreaGrayImage);
 
 }
 

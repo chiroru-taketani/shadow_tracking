@@ -97,6 +97,8 @@ void initGL()
     // 読み込んだ情報に基づき、OpenCVで使う画像領域をメモリ上に確保
     scanImage = cv::Mat(cv::Size(scanAreaW / scanReso, scanAreaH / scanReso), CV_8UC3); // カラー画像用
     binImage = cv::Mat(cv::Size(scanAreaW / scanReso, scanAreaH / scanReso), CV_8UC1);  // 白黒(2値)画像用
+    
+
 
     
     //---- GLUTウィンドウの生成 ----
@@ -140,6 +142,15 @@ void initGL()
 void display()
 {
     //---- [1] LiDARデータをOpenGLで描画 ----
+    // 影マップ画像の読み込み (毎フレーム)
+    shadowMap = cv::imread("../ShadowImg/ShadowArea.png", cv::IMREAD_GRAYSCALE);
+    if (!shadowMap.empty()) {
+        //cv::rotate(shadowMap, shadowMap, cv::ROTATE_90_COUNTERCLOCKWISE);
+        if (shadowMap.size() != scanImage.size()) {
+            cv::resize(shadowMap, shadowMap, scanImage.size());
+        }
+    }
+
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // 画面(カラーバッファとデプスバッファ)をクリア
     glLoadIdentity();                                   // 座標変換行列を初期化
 
@@ -216,7 +227,7 @@ void display()
             Vec_3D pointF;
             gluUnProject(p.x, binImage.rows - p.y, 0, model, proj, view, &pointF.x, &pointF.y, &pointF.z);
             footPoints.push_back(pointF); // 変換後の実世界座標を格納
-             // printf("%f, %f\n", pointF.x, pointF.y); // (デバッグ用)座標をコンソールに表示
+             printf("%f, %f\n", pointF.x, pointF.y); // (デバッグ用)座標をコンソールに表示
 
              break; // 最初に検出した物体の重心位置のみを記録 (複数物体の検出は行わない)
         }
@@ -235,6 +246,19 @@ void display()
 
     // OpenCVのウィンドウで、処理結果の画像を表示
     cv::imshow("Scan", scanImage);
+    if (!shadowMap.empty()) {
+        cv::imshow("Shadow Map", shadowMap);
+
+        // 合成画像の作成と表示
+        cv::Mat shadowMapColor;
+        cv::cvtColor(shadowMap, shadowMapColor, cv::COLOR_GRAY2BGR); // グレースケールをカラーに変換
+        
+        cv::Mat compositeImage;
+        // scanImageとshadowMapColorを合成 (重み付け加算)
+        cv::addWeighted(scanImage, 0.6, shadowMapColor, 0.4, 0, compositeImage);
+        
+        cv::imshow("Composite", compositeImage);
+    }
 }
 
 //============================================================
