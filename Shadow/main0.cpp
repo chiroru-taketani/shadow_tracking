@@ -214,7 +214,7 @@ void initGL()
 
         //テクスチャ
         //テクスチャオブジェクト生成(#100)
-        textureImage = cv::imread("friends.png", cv::IMREAD_UNCHANGED);
+        textureImage = cv::imread("Object_01.png", cv::IMREAD_UNCHANGED);
         objPos.s = textureImage.cols; objPos.t = textureImage.rows;
         objPos.id = 100;
         glBindTexture(GL_TEXTURE_2D, objPos.id);  //テクスチャオブジェクト生成
@@ -612,7 +612,8 @@ void keyboard(unsigned char key, int x, int y)
             eDegX[1] = 90.0;
             eDegY[1] = 0.0;
             break;
-            
+
+
         default:
             break;
     }

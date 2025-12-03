@@ -121,8 +121,8 @@ void loop() {
   // Yが上 (0) のとき: r=0, b=255
   // Yが下 (31)のとき: r=255, b=0
   r_val = 200.0;
-  g_val = (uint8_t)(255.0 * color_ratio);
-  b_val = (uint8_t)(255.0 * color_ratio);
+  g_val = 255;
+  b_val = 255;
   // --- ▲▲▲ 色変更処理 ▲▲▲ ---
 
   // 描画を行う
