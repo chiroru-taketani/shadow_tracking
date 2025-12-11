@@ -142,8 +142,7 @@ void initGL()
 void display()
 {
     //---- [1] LiDARデータをOpenGLで描画 ----
-    // 影マップ画像の読み込み (毎フレーム)
-    // shadowMap = cv::imread("../ShadowImg/ShadowArea.png", cv::IMREAD_GRAYSCALE);
+   
     if (!shadowMap.empty()) {
         //cv::rotate(shadowMap, shadowMap, cv::ROTATE_90_COUNTERCLOCKWISE);
         if (shadowMap.size() != scanImage.size()) {
@@ -164,8 +163,15 @@ void display()
     {
         // スキャン点情報を直交座標(x, y)に変換
         double len = distData[i] * 0.1; // 距離(mm)をcmに変換
+        if(len < 3.0){
+            continue;
+        }
+     
         double rad = urg.index2rad(i);  // i番目のスキャン点の角度(ラジアン)を取得
         double x = -len * sin(rad);     // i番目のスキャン点のx座標 (センサー座標系→OpenGL座標系)
+        // if(x < -2.0){
+        //     continue;
+        // }
         double y = len * cos(rad);      // i番目のスキャン点のy座標 (センサー座標系→OpenGL座標系)
         double z = 0;                   // 2Dなのでzは0
 
@@ -204,7 +210,7 @@ void display()
     // モルフォロジー処理でノイズ除去と領域の結合を行う
     cv::dilate(binImage, binImage, element, cv::Point(-1, -1), 2); // 2回膨張させて、スキャン点間の隙間を埋める
     cv::erode(binImage, binImage, element, cv::Point(-1, -1), 2);  // 2回収縮させて、膨張した領域を元に戻しつつ、ノイズを除去
-    // cv::dilate(binImage, binImage, element, cv::Point(-1,-1), 1); // 必要なら再度膨張
+    cv::dilate(binImage, binImage, element, cv::Point(-1,-1), 5); // 必要なら再度膨張
 
     //---- [3] 輪郭検出と重心計算 ----
     std::vector<std::vector<cv::Point>> contours; // 検出された輪郭の情報を格納するベクター
@@ -215,7 +221,7 @@ void display()
     for (int i = 0; i < contours.size(); i++)
     {                                           // 検出された全ての輪郭についてループ
         double area = contourArea(contours[i]); // 輪郭の面積を計算
-        if (area > 80)
+        if (area > 100)
         { // 面積が70ピクセルより大きいものだけを物体として認識 (ノイズ除去)
             
             // 輪郭のモーメントを計算して、重心を求める
@@ -247,19 +253,7 @@ void display()
 
     // OpenCVのウィンドウで、処理結果の画像を表示
     cv::imshow("Scan", scanImage);
-    if (!shadowMap.empty()) {
-        cv::imshow("Shadow Map", shadowMap);
 
-        // 合成画像の作成と表示
-        cv::Mat shadowMapColor;
-        cv::cvtColor(shadowMap, shadowMapColor, cv::COLOR_GRAY2BGR); // グレースケールをカラーに変換
-        
-        cv::Mat compositeImage;
-        // scanImageとshadowMapColorを合成 (重み付け加算)
-        cv::addWeighted(scanImage, 0.6, shadowMapColor, 0.4, 0, compositeImage);
-        
-        cv::imshow("Composite", compositeImage);
-    }
 }
 
 //============================================================

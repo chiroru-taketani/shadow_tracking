@@ -223,7 +223,7 @@ void initGL()
     frameImage1 = cv::Mat(cv::Size(TEX_SIZE, TEX_SIZE), CV_8UC4);
     
     //表示パネルサイズ・位置
-    objPos.u = 80.0;  //横幅
+    objPos.u = 50.0;  //横幅
     objPos.x = 0.0; 
     objPos.y = objPos.u*objPos.t/objPos.s*0.5; 
     objPos.z = 100.0;  //位置
@@ -237,14 +237,14 @@ void initGL()
 void scene()
 {
     if(ObjectFlg == 0) {
-    //オブジェクト（本体）
-   glDisable(GL_LIGHTING);
-   glColor4d(1.0, 1.0, 1.0, 1.0);
-   glPushMatrix();
-   glTranslated(objPos.x, objPos.y, objPos.z);
-   glScaled(objPos.u, objPos.u*objPos.t/objPos.s, 1.0);
-   glMyTexPlane(objPos.id, objPos.s/50, objPos.t/50);
-   glPopMatrix();
+        //オブジェクト（本体）
+        glDisable(GL_LIGHTING);
+        glColor4d(1.0, 1.0, 1.0, 1.0);
+        glPushMatrix();
+        glTranslated(objPos.x, objPos.y, objPos.z);
+        glScaled(objPos.u, objPos.u*objPos.t/objPos.s, 1.0);
+        glMyTexPlane(objPos.id, objPos.s/50, objPos.t/50);
+        glPopMatrix();
     }
     
     if (ObjectFlg == 1) {//立方体
@@ -253,8 +253,8 @@ void scene()
         glColor4d(1.0, 0.0, 0.0, 1.0);
         glPushMatrix();
         glTranslated(0.0, 15.0, objPos.z);
-        glScaled(35.0, 35.0, 35.0);
-        glutSolidCube(1.0);
+        glScaled(30.0, 30.0, 30.0);
+       glutSolidCube(1.0);
         glPopMatrix();
        
     }

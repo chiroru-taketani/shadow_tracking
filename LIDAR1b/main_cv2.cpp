@@ -1,6 +1,6 @@
 // LiDAR
 /*
- * g++ -O3 main_cv.cpp -std=c++11 `pkg-config --cflags --libs opencv4` -framework OpenGL -framework GLUT Connection_information.cpp liburg_cpp.a -Wno-deprecated
+ * g++ -O3 main_cv2.cpp -std=c++11 `pkg-config --cflags --libs opencv4` -framework OpenGL -framework GLUT Connection_information.cpp liburg_cpp.a -Wno-deprecated
  */
 #include <iostream>                 // 標準入出力
 #include <time.h>                   // 時間関連
@@ -163,15 +163,15 @@ void display()
     {
         // スキャン点情報を直交座標(x, y)に変換
         double len = distData[i] * 0.1; // 距離(mm)をcmに変換
-        if(len < 3.0){
-            continue;
-        }
+        // if(len < 2.0){
+        //     continue;
+        // }
      
         double rad = urg.index2rad(i);  // i番目のスキャン点の角度(ラジアン)を取得
         double x = -len * sin(rad);     // i番目のスキャン点のx座標 (センサー座標系→OpenGL座標系)
-        if(x < -2.0){
-            continue;
-        }
+        // if(x < -2.0){
+        //     continue;
+        // }
         double y = len * cos(rad);      // i番目のスキャン点のy座標 (センサー座標系→OpenGL座標系)
         double z = 0;                   // 2Dなのでzは0
 

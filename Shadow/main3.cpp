@@ -1,4 +1,4 @@
-//g++ -O3 -std=c++11 main0.cpp -framework OpenGL -framework GLUT `pkg-config --cflags --libs opencv4` -Wno-deprecated
+//g++ -O3 -std=c++11 main3.cpp -framework OpenGL -framework GLUT `pkg-config --cflags --libs opencv4` -Wno-deprecated
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <vector>
 #include <algorithm>
+
 
 //定数宣言
 #define TEX_SIZE 512  //テクスチャサイズ
@@ -58,7 +59,7 @@ double scanW = 400.0, scanH = 360.0;  //スキャンエリア
 double aspectRate = 1.0/2.0;
 double lightW = 256.0, lightH = lightW*aspectRate;  //照明エリア（2:1としている）
 double reso = 2.0;  //
-Vec_3D touchPos;  //手を触れた場所
+Vec_3D touchPos, touchPos0;  //手を触れた場所
 unsigned char shadowVal = 255;  //影かどうか（0は影）
 Vec_3D lightVec;  //光線ベクトル
 Vec_3D lightCollPos;  //光線が物体と当たる場所
@@ -68,6 +69,11 @@ int chaseFlg = 0;
 int ObjectFlg = 1;
 
 cv::Mat frameImage0, frameImage, frameImage1, shadowAreaImage, shadowAreaGrayImage;
+
+// シリアル通信用
+int serialFD = -1;
+const char* SERIAL_PORT = "/dev/cu.usbserial-10"; // 自動検出したポート
+const int BAUD_RATE = 115200;
 
 //テクスチャ生成関数のパラメータ（）
 static double genfunc[][4] = {
@@ -79,43 +85,13 @@ static double genfunc[][4] = {
 
 double rDisp = 1.0;
 
-// // 光源操作モード関連
-// bool lightControlMode = false;
-// int noObjectTimer = 0;
-// const int NO_OBJECT_LIMIT = 60; // 約2秒 (30fps想定で60フレーム)
-
-// // 外れ値・ジャンプ除去用
-// double prev_fx = -9999.0, prev_fy = -9999.0;
-// const double JUMP_THRESHOLD = 5.0;
-
-// // ▼▼▼ 追加: 静止判定用変数 ▼▼▼
-// int staticObjectTimer = 0;
-// const int STATIC_OBJECT_LIMIT = 1; // 60フレーム（約2秒）変化がなければOFF
-// double last_input_fx = -9999.0;
-// double last_input_fy = -9999.0;
-// const double STATIC_DIFF_THRESHOLD = 0.01; // 変化なしとみなす差分閾値
-// // ▲▲▲ 追加ここまで ▲▲▲
-
-// // メディアンフィルタ用
-// std::vector<double> history_fx;
-// std::vector<double> history_fy;
-// const int MEDIAN_WINDOW_SIZE = 5;
-
-// // アダプティブスムージング用
-// double smooth_fx = -9999.0, smooth_fy = -9999.0;
-
-// シリアル通信用
-int serialFD = -1;
-const char* SERIAL_PORT = "/dev/cu.usbserial-10"; // 自動検出したポート
-const int BAUD_RATE = 115200;
-
 //メイン関数
 int main(int argc, char *argv[])
 {
     glutInit(&argc, argv);  //OpenGL/GLUTの初期化
     initGL();  //初期設定
-    
-    // シリアルポート初期化
+
+     // シリアルポート初期化
     serialFD = initSerial(SERIAL_PORT);
     if (serialFD == -1) {
         printf("Failed to open serial port: %s\n", SERIAL_PORT);
@@ -124,9 +100,6 @@ int main(int argc, char *argv[])
     }
 
     glutMainLoop();  //イベント待ち無限ループ
-    
-    // 終了処理 (glutMainLoopからは戻らないが、念のため)
-    if (serialFD != -1) close(serialFD);
 
     return 0;
 }
@@ -223,17 +196,15 @@ void initGL()
 
         //テクスチャ
         //テクスチャオブジェクト生成(#100)
-        textureImage = cv::imread("Object_01.png", cv::IMREAD_UNCHANGED);
-        if(!textureImage.empty()){
-            objPos.s = textureImage.cols; objPos.t = textureImage.rows;
-            objPos.id = 100;
-            glBindTexture(GL_TEXTURE_2D, objPos.id);  //テクスチャオブジェクト生成
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);  //テクスチャ反復方法(s方向)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);  //テクスチャ反復方法(t方向)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);  //テクスチャ補間方法(拡大時)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);  //テクスチャ補間方法(縮小時)
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureImage.cols, textureImage.rows, 0, GL_BGRA, GL_UNSIGNED_BYTE, textureImage.data);
-        }
+        textureImage = cv::imread("Obj_01.png", cv::IMREAD_UNCHANGED);
+        objPos.s = textureImage.cols; objPos.t = textureImage.rows;
+        objPos.id = 100;
+        glBindTexture(GL_TEXTURE_2D, objPos.id);  //テクスチャオブジェクト生成
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);  //テクスチャ反復方法(s方向)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);  //テクスチャ反復方法(t方向)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);  //テクスチャ補間方法(拡大時)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);  //テクスチャ補間方法(縮小時)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureImage.cols, textureImage.rows, 0, GL_BGRA, GL_UNSIGNED_BYTE, textureImage.data);
 
         glBindTexture(GL_TEXTURE_2D, 0);  //テクスチャオブジェクト生成
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);  //テクスチャ反復方法(s方向)
@@ -252,41 +223,38 @@ void initGL()
     frameImage1 = cv::Mat(cv::Size(TEX_SIZE, TEX_SIZE), CV_8UC4);
     
     //表示パネルサイズ・位置
-    objPos.u = 80.0;  //横幅
+    objPos.u = 50.0;  //横幅
     objPos.x = 0.0; 
     objPos.y = objPos.u*objPos.t/objPos.s*0.5; 
     objPos.z = 100.0;  //位置
-    if(objPos.s == 0) objPos.y = 10.0; // テクスチャロード失敗時の安全策
-
+    
     //光源位置
-    lightPos0.x = 0.0; 
-    lightPos0.y = lightH/2.0; 
-    lightPos0.z = scanH/2.0;
+    lightPos0.x = 0.0; lightPos0.y = lightH/2.0; lightPos0.z = scanH/2.0;
     lightCollPos.z = objPos.z;  //光源と物体との衝突位置
 }
 
 //ユーザに知覚させたいオブジェクトの描画
 void scene()
 {
-    if (ObjectFlg == 0) {
-    //オブジェクト（本体）
-    glDisable(GL_LIGHTING);
-    glColor4d(1.0, 1.0, 1.0, 1.0);
-    glPushMatrix();
-    glTranslated(objPos.x, objPos.y, objPos.z);
-    glScaled(objPos.u, objPos.u*objPos.t/objPos.s, 1.0);
-    glMyTexPlane(objPos.id, objPos.s/50, objPos.t/50);
-    glPopMatrix();
+    if(ObjectFlg == 0) {
+        //オブジェクト（本体）
+        glDisable(GL_LIGHTING);
+        glColor4d(1.0, 1.0, 1.0, 1.0);
+        glPushMatrix();
+        glTranslated(objPos.x, objPos.y, objPos.z);
+        glScaled(objPos.u, objPos.u*objPos.t/objPos.s, 1.0);
+        glMyTexPlane(objPos.id, objPos.s/50, objPos.t/50);
+        glPopMatrix();
     }
-
+    
     if (ObjectFlg == 1) {//立方体
 
         glDisable(GL_LIGHTING);
         glColor4d(1.0, 0.0, 0.0, 1.0);
         glPushMatrix();
-        glTranslated(40.0, 15.0, objPos.z);
-        glScaled(35.0, 35.0, 35.0);
-        glutSolidCube(1.0);
+        glTranslated(0.0, 15.0, objPos.z);
+        glScaled(30.0, 30.0, 30.0);
+       glutSolidCube(1.0);
         glPopMatrix();
        
     }
@@ -327,6 +295,29 @@ void scene()
         glScaled(2.5, 2.5, 2.5);
         glutSolidSphere(1.0, 36, 18);
         glPopMatrix();
+        
+        glColor4d(1.0, 0.0, 0.0, 1.0);
+        glPushMatrix();
+        glTranslated(touchPos.x, 0.0, touchPos.z);
+        glScaled(2.5, 2.5, 2.5);
+        glutSolidSphere(1.0, 36, 18);
+        glPopMatrix();
+
+        glColor4d(1.0, 0.0, 1.0, 1.0);
+        glPushMatrix();
+        glTranslated(touchPos0.x, 0.0, touchPos0.z);
+        glScaled(2.5, 2.5, 2.5);
+        glutSolidSphere(1.0, 36, 18);
+        glPopMatrix();
+
+        glColor4d(1.0, 0.0, 0.0, 1.0);
+        for (int i=0; i<footNum; i++) {
+            glPushMatrix();
+            glTranslated(footPoint[i].x, 0.0, footPoint[i].z);
+            glScaled(2.5, 2.5, 2.5);
+            glutSolidSphere(1.0, 36, 18);
+            glPopMatrix();
+        }
     }
 }
 
@@ -338,7 +329,7 @@ void display0()
     //投影変換の設定
     glMatrixMode(GL_PROJECTION);  //変換行列の指定（設定対象は投影変換行列）
     glLoadIdentity();  //行列初期化
-    gluPerspective(90.0, (double)winW[0]/(double)winH[0], 50.0, 1000.0);  //透視投影ビューボリューム設定
+    gluPerspective(120.0, (double)winW[0]/(double)winH[0], 50.0, 1000.0);  //透視投影ビューボリューム設定
     
     //モデルビュー変換の設定
     glMatrixMode(GL_MODELVIEW);  //変換行列の指定（設定対象はモデルビュー変換行列）
@@ -436,7 +427,7 @@ void display1()
     glTranslated(0.5, 0.5, 0.5);  //テクスチャ座標と同じ0~1になるように0.5だけ平行移動
     glScaled(0.5, 0.5, 0.5);  //視点座標系は-1~1なので，-0.5~0.5になるように縮小
     glRotated(180.0, 1.0, 0.0, 0.0);  //上下反転
-    gluPerspective(90.0, (GLdouble)winW[0]/(GLdouble)winH[0], 50.0, 1000.0);  //display0と同じ投影変換
+    gluPerspective(120.0, (GLdouble)winW[0]/(GLdouble)winH[0], 50.0, 1000.0);  //display0と同じ投影変換
     gluLookAt(lightPos0.x, lightPos0.y, lightPos0.z, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);  //display0と同じ視点
     
     //自動生成されたテクスチャ座標を用いて，床面に相当する平面にdisplay0で生成した映像をテクスチャマッピング
@@ -484,25 +475,6 @@ void display1()
     glLoadIdentity();  //行列初期化
     
 
-    // touchPosの位置に赤い点を表示
-    // 確実に色を表示するためにテクスチャとライティングを無効化
-    glDisable(GL_TEXTURE_2D);
-    glDisable(GL_LIGHTING);
-    
-    glColor4d(1.0, 0.0, 0.0, 1.0); // 赤色 (RGBA)
-
-    glPushMatrix();
-    // touchPosの位置へ移動。
-    // 床面のテクスチャ(y=0付近)と重なってちらつくのを防ぐため、y方向に少しだけ浮かせる(+0.5など)
-    glTranslated(touchPos.x, touchPos.y + 0.5, touchPos.z);
-    
-    // 点のサイズ調整。シーンのスケールに合わせて見やすい大きさに変えてください。
-    // ここでは半径5.0の球体として表示します。
-    double pointSize = 10.0;
-    glScaled(pointSize, pointSize, pointSize);
-    
-    glutSolidSphere(1.0, 16, 16); // 球体を描画（分割数16）
-    glPopMatrix();
     //======================================================================================================================
 
     glutSwapBuffers();  //描画実行
@@ -527,7 +499,7 @@ void display2()
     glColor4d(1.0, 2*lightPos0.y/lightH, 2*lightPos0.y/lightH, 1.0);
     glPushMatrix();
     glTranslated(-lightPos0.x, lightPos0.y, 0.0);
-    glScaled(10.0, 10.0, 1.0);
+    glScaled(11.0, 11.0, 1.0);
     glutSolidSphere(1.0, 36, 18);
     glPopMatrix();
 
@@ -602,20 +574,35 @@ void mouse1(int button, int state, int x, int y)
         
         if (button==GLUT_LEFT_BUTTON) {
             //タッチ位置
-            touchPos.x = (mX[wID]-scanW*reso*0.5)/reso; touchPos.y = 0.0; touchPos.z = (mY[wID]-scanH*reso*0.5)/reso;
+            Vec_3D touchPosX;
+            touchPosX.x = (mX[wID]-scanW*reso*0.5)/reso; touchPosX.y = 0.0; touchPosX.z = (mY[wID]-scanH*reso*0.5)/reso;
+            double len = sqrt(pow(touchPos.x-touchPosX.x,2)+pow(touchPos.z-touchPosX.z,2));
+            touchPos = touchPosX;
             printf("touchPos = (%f, %f, %f)\n", touchPos.x, touchPos.y, touchPos.z);
             
-            //タッチ位置シャドウ画像画素値
-            shadowVal = shadowAreaGrayImage.at<unsigned char>(mY[wID], mX[wID]);
-            printf("shadowVal = %d\n", shadowVal);
-            
-            //
-            lightVec.x = lightPos0.x-touchPos.x; lightVec.y = lightPos0.y-touchPos.y; lightVec.z = lightPos0.z-touchPos.z;
-            lightVec = vectorNormalize(lightVec);
-            printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
-            double t = (objPos.z-touchPos.z)/lightVec.z;
-            lightCollPos.x = touchPos.x+lightVec.x*t;
-            lightCollPos.y = touchPos.y+lightVec.y*t;
+            if (shadowVal==0 && len<10.0) {  //影を動かす
+                lightVec.x = lightCollPos.x-touchPos.x;
+                lightVec.y = lightCollPos.y-touchPos.y;
+                lightVec.z = lightCollPos.z-touchPos.z;
+                lightVec = vectorNormalize(lightVec);
+                
+                double t = (lightPos0.z-touchPos.z)/lightVec.z;
+                lightPos0.x = touchPos.x+lightVec.x*t;
+                lightPos0.y = touchPos.y+lightVec.y*t;
+            }
+            else {
+                //タッチ位置シャドウ画像画素値
+                shadowVal = shadowAreaGrayImage.at<unsigned char>(mY[wID], mX[wID]);
+                printf("shadowVal = %d\n", shadowVal);
+                
+                //
+                lightVec.x = lightPos0.x-touchPos.x; lightVec.y = lightPos0.y-touchPos.y; lightVec.z = lightPos0.z-touchPos.z;
+                lightVec = vectorNormalize(lightVec);
+                printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
+                double t = (objPos.z-touchPos.z)/lightVec.z;
+                lightCollPos.x = touchPos.x+lightVec.x*t;
+                lightCollPos.y = touchPos.y+lightVec.y*t;
+            }
         }
     }
 }
@@ -680,7 +667,29 @@ void keyboard(unsigned char key, int x, int y)
             eDegY[1] = 0.0;
             break;
 
+        case 't':
 
+         lightPos0.x = 0.0; 
+         lightPos0.y = lightH/2.0; 
+         lightPos0.z = scanH/2.0;
+            break;
+
+        case '1'://立方体
+            ObjectFlg = 1;
+            break;
+
+        case '2'://立方体と球体
+            ObjectFlg = 2;
+            break;
+
+        case '0'://テクスチャ
+            ObjectFlg = 0;
+            break;
+
+        case 'f':
+            glutFullScreen();
+            break;
+            
         default:
             break;
     }
@@ -698,203 +707,131 @@ void timer0(int value)
     
     glutSetWindow(winID[2]);
     glutPostRedisplay();  //ディスプレイイベント強制発生
+    
+    
+    int wID = 1;
+    FILE *fp = fopen("../LIDAR1b/footpoint.txt", "r");
+    footNum = 0;
+    if (fp!=NULL) {
+        int tmpNum;
+        fscanf(fp, "%d", &tmpNum);
+        double tmpX, tmpZ;
+        fscanf(fp, "%lf,%lf", &tmpX, &tmpZ);
+        fclose(fp);
+        printf("%f, %f\n", tmpX, tmpZ);
+        touchPos0.x = tmpZ*10.0-scanW/2.0;
+        touchPos0.z = tmpX*10.0;
+        touchPos0.y = 0.0;
+        //printf("touchPos0 = (%f, %f, %f)\n", touchPos0.x, touchPos0.y, touchPos0.z);
 
-    // scanarea.txtの読み込み
-    FILE *LidarScanArea = fopen("../LIDAR1b/scanarea.txt", "r");
-    double lScanW = 16.0, lScanH = 40.0, lReso = 0.2; // デフォルト値
-    if (LidarScanArea != NULL) {
-        fscanf(LidarScanArea, "%lf,%lf,%lf", &lScanW, &lScanH, &lReso);
-        fclose(LidarScanArea);
+        // 画像範囲外アクセスの防止チェックを追加しておくと安全です
+        int imgX, imgY;
+        imgX = (touchPos0.x-(-scanW/2.0))/scanW*shadowAreaGrayImage.cols;
+        imgY = (touchPos0.z-(-scanH/2.0))/scanH*shadowAreaGrayImage.rows;
+        
+        // 座標が画像範囲内の場合のみ処理
+        if (imgX >= 0 && imgX < shadowAreaGrayImage.cols && imgY >= 0 && imgY < shadowAreaGrayImage.rows) {
+            unsigned char shadowVal0 = shadowAreaGrayImage.at<unsigned char>(imgY, imgX);
+
+            if (shadowVal0==0) {
+                if (chaseFlg==0) {
+                    chaseFlg = 1;
+                    touchPos = touchPos0;
+                    //
+                    lightVec.x = lightPos0.x-touchPos.x; lightVec.y = lightPos0.y-touchPos.y; lightVec.z = lightPos0.z-touchPos.z;
+                    lightVec = vectorNormalize(lightVec);
+                    printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
+                    double t = (objPos.z-touchPos.z)/lightVec.z;
+                    lightCollPos.x = touchPos.x+lightVec.x*t;
+                    lightCollPos.y = touchPos.y+lightVec.y*t;
+                }
+                else {
+                    double len = sqrt(pow(touchPos.x-touchPos0.x,2)+pow(touchPos.z-touchPos0.z,2));
+                    if (len<30.0 && chaseFlg==1) {
+                        printf("Drug\n");
+                        touchPos = touchPos0;
+                        lightVec.x = lightCollPos.x-touchPos0.x;
+                        lightVec.y = lightCollPos.y-touchPos0.y;
+                        lightVec.z = lightCollPos.z-touchPos0.z;
+                        lightVec = vectorNormalize(lightVec);
+                        
+                        double t = (lightPos0.z-touchPos0.z)/lightVec.z;
+                        lightPos0.x = touchPos0.x+lightVec.x*t;
+                        lightPos0.y = touchPos0.y+lightVec.y*t;
+                        touchPos = touchPos0;
+                        chaseFlg = 1;
+                    }
+                }
+            }
+            else {
+                chaseFlg = 0;
+            }
+        }
     }
 
-    // footpoint.txtの読み込み
-    FILE *fp = fopen("../LIDAR1b/footpoint.txt", "r");
+    //-----------------------------------------------------
+    // ▼ 追加・修正箇所: 座標制限処理 ▼
+    //-----------------------------------------------------
+    
+    // lightPos0.x を -lightW/2.0 〜 lightW/2.0 の範囲に制限
+    if (lightPos0.x < -lightW / 2.0) {
+        lightPos0.x = -lightW / 2.0;
+    }
+    else if (lightPos0.x > lightW / 2.0) {
+        lightPos0.x = lightW / 2.0;
+    }
 
-    if (fp != NULL) {
-        int numPoints = 0;
-        if (fscanf(fp, "%d", &numPoints) != EOF && numPoints > 0) {
-            noObjectTimer = 0; // 物体検知でタイマーリセット
+    // lightPos0.y を 0.0 〜 lightH の範囲に制限
+    if (lightPos0.y < 0.0) {
+        lightPos0.y = 0.0;
+    }
+    else if (lightPos0.y > lightH) {
+        lightPos0.y = lightH;
+    }
+    //-----------------------------------------------------
 
-            double fx, fy;
-            if (fscanf(fp, "%lf,%lf", &fx, &fy) != EOF) {
-                
-                // ▼▼▼ 追加: 静止判定ロジック ▼▼▼
-                // 前回の生データとの距離を計算
-                double dist_static = 0.0;
-                if (last_input_fx != -9999.0) {
-                    dist_static = sqrt(pow(fx - last_input_fx, 2) + pow(fy - last_input_fy, 2));
-                }
+    // シリアル送信
+    if (serialFD != -1) {
+        char buf[64];
+        // LEDパネル用に変換 (0~64, 0~32)
+        double serial_x = (lightPos0.x + lightW/2.0)*64.0/lightW;
+        double serial_y = (lightH-lightPos0.y)*32.0/lightH;
 
-                // 変化がほとんどない場合
-                if (dist_static < STATIC_DIFF_THRESHOLD) {
-                    staticObjectTimer++;
-                } else {
-                    // 動いたらリセット
-                    staticObjectTimer = 0;
-                    last_input_fx = fx;
-                    last_input_fy = fy;
-                }
-                // ▲▲▲ 追加ここまで ▲▲▲
+        // 念のための最終クランプ（浮動小数点の誤差対策）
+        if (serial_x < 0.0) serial_x = 0.0;
+        if (serial_x > 64.0) serial_x = 64.0;
+        if (serial_y < 0.0) serial_y = 0.0;
+        if (serial_y > 32.0) serial_y = 32.0;
 
-                // メディアンフィルタ処理
-                fx = fx * -1.0f;
-                history_fx.push_back(fx);
-                history_fy.push_back(fy);
-                if (history_fx.size() > MEDIAN_WINDOW_SIZE) {
-                    history_fx.erase(history_fx.begin());
-                    history_fy.erase(history_fy.begin());
-                }
+        int len = snprintf(buf, sizeof(buf), "%.2f,%.2f\n", serial_x, serial_y);
+        write(serialFD, buf, len);
+        //printf("LightPos: (%.2f, %.2f, %.2f)\n", lightPos0.x, lightPos0.y, lightPos0.z);
+        printf("Sent: %s", buf);
+    }
 
-                // 中央値を計算
-                std::vector<double> sorted_fx = history_fx;
-                std::vector<double> sorted_fy = history_fy;
-                std::sort(sorted_fx.begin(), sorted_fx.end());
-                std::sort(sorted_fy.begin(), sorted_fy.end());
-                double median_fx = sorted_fx[sorted_fx.size() / 2];
-                double median_fy = sorted_fy[sorted_fy.size() / 2];
 
-                // 正常値として更新
-                prev_fx = median_fx;
-                prev_fy = median_fy;
+    // シリアル送信
+    if (serialFD != -1) {
+        char buf[64];
+        //LEDパネル用に変換
+        double serial_x = (lightPos0.x + lightW/2.0)*64.0/lightW;
+        double serial_y = (lightH-lightPos0.y)*32.0/lightH;
+        // double out_min_x = 0.0f;
+        // double out_max_x = 64.0f;//64
+        // double serial_x = out_min_x + (lightPos0.x - in_min_x) * (out_max_x - out_min_x) / (in_max_x - in_min_x);
 
-                // アダプティブスムージング処理
-                if (smooth_fx == -9999.0) {
-                    smooth_fx = median_fx;
-                    smooth_fy = median_fy;
-                } else {
-                    // 移動距離に応じてAlphaを動的に変更
-                    double move_dist = sqrt(pow(median_fx - smooth_fx, 2) + pow(median_fy - smooth_fy, 2));
-                    double adaptive_alpha;
-                    
-                    // 停止中(dist < 1.0)は強く平滑化(alpha=0.2)、移動中(dist > 5.0)は追従性重視(alpha=0.9)
-                    if (move_dist < 1.0) adaptive_alpha = 0.2;
-                    else if (move_dist > 5.0) adaptive_alpha = 0.9;
-                    else {
-                        // 線形補間
-                        adaptive_alpha = 0.2 + (move_dist - 1.0) * (0.9 - 0.2) / (5.0 - 1.0);
-                    }
+        // double in_min_y = -70.0f;//-70
+        // double in_max_y = 233.0f ;//233
+        // double out_min_y = 32.0f;//32
+        // double out_max_y = 0.0f;//0
+        // double serial_y = out_min_y + (lightPos0.y - in_min_y) * (out_max_y - out_min_y) / (in_max_y - in_min_y);
 
-                    smooth_fx = smooth_fx * (1.0 - adaptive_alpha) + median_fx * adaptive_alpha;
-                    smooth_fy = smooth_fy * (1.0 - adaptive_alpha) + median_fy * adaptive_alpha;
-                }
-                
-                // 変換にはスムージングされた値を使用
-                double use_fx = smooth_fx;
-                double use_fy = smooth_fy;
-
-                // 座標変換
-                double in_min_y = 0.0f;//0
-                double in_max_y = lScanH ;//40
-                double out_min_y = -(scanW * 0.5f);//-150
-                double out_max_y = scanW * 0.5f ;//150
-
-                use_fy = out_min_y + (use_fy - in_min_y) * (out_max_y - out_min_y) / (in_max_y - in_min_y);
-
-                //範囲を変換
-                double in_min_x = -(lScanW * 0.5f);//-8
-                double in_max_x = lScanW * 0.5f;//8
-                double out_min_x = - scanH * 0.5f;//-100
-                double out_max_x = objPos.z ;//30
-                use_fx = out_min_x + (use_fx - in_min_x) * (out_max_x - out_min_x) / (in_max_x - in_min_x);
-
-                touchPos.x = use_fy;//footPont.yを　touchPos.xに変換
-                touchPos.z = 0.0 ; // footPoint.xをtouchPos.zに代入
-                touchPos.y = use_fx ;
-                
-                printf("touchPos: %f, %f, %f\n", touchPos.x, touchPos.y, touchPos.z);
-
-                // 影判定
-                int pX = (int)((touchPos.x * reso) + (scanW * reso * 0.5));
-                int pY = (int)((touchPos.z * reso) + (scanH * reso * 0.5));
-                int sVal = -1;
-                if (!shadowAreaGrayImage.empty() && pX >= 0 && pX < shadowAreaGrayImage.cols && pY >= 0 && pY < shadowAreaGrayImage.rows) {
-                    sVal = shadowAreaGrayImage.at<unsigned char>(pY, pX);
-                }
-                                printf("LightPos: %.2f, %.2f, %.2f, ShadowVal: %d\n", lightPos0.x, lightPos0.y, lightPos0.z, sVal);
-
-                        // LightPos shadow check
-                        int lX = (int)((lightPos0.x * reso) + (scanW * reso * 0.5));
-                        int lY = (int)((lightPos0.z * reso) + (scanH * reso * 0.5));
-                        int lShadowVal = -1;
-                        if (!shadowAreaGrayImage.empty() && lX >= 0 && lX < shadowAreaGrayImage.cols && lY >= 0 && lY < shadowAreaGrayImage.rows) {
-                            lShadowVal = shadowAreaGrayImage.at<unsigned char>(lY, lX);
-                        }
-                        printf("LightPos Shadow Check: (%d, %d) -> Val: %d\n", lX, lY, lShadowVal);
-
-                // ▼▼▼ 修正: モード切替判定（静止時はOFF） ▼▼▼
-                // 影に入ったらモードON (閾値は仮に200未満とする)
-                // 【変更点】静止タイマーがリミット以内の場合のみONにする
-                if (sVal != -1 && sVal < 200 && staticObjectTimer <= STATIC_OBJECT_LIMIT) {
-                    lightControlMode = true;
-                }
-                // 静止タイマーがリミットを超えたら強制OFF
-                else if (staticObjectTimer > STATIC_OBJECT_LIMIT) {
-                    lightControlMode = false;
-                    printf("Static Object Detected. Mode OFF.\n");
-                }
-                // ▲▲▲ 修正ここまで ▲▲▲
-                
-                printf("LightControlMode: %s\n", lightControlMode ? "ON" : "OFF");
-
-                // 光源位置の更新 (モードONの場合のみ)
-                if (lightControlMode) {
-                    lightVec.x = lightCollPos.x - touchPos.x;
-                    lightVec.y = lightCollPos.y - touchPos.y;
-                    lightVec.z = lightCollPos.z - touchPos.z;
-                    lightVec = vectorNormalize(lightVec);
-
-                    if (fabs(lightVec.z) > 0.001) {
-                         double t = (lightPos0.z - touchPos.z) / lightVec.z;
-                         lightPos0.x = (touchPos.x + lightVec.x * t);
-                         lightPos0.y = (touchPos.y + lightVec.y * t );
-
-                        // シリアル送信
-                        if (serialFD != -1) {
-                            char buf[64];
-                            //LEDパネル用に変換
-                            double in_min_x = -350;//-350
-                            double in_max_x = 350;//350
-                            double out_min_x = 0.0f;
-                            double out_max_x = 64.0f;//64
-                            double serial_x = out_min_x + (lightPos0.x - in_min_x) * (out_max_x - out_min_x) / (in_max_x - in_min_x);
-
-                            double in_min_y = -70.0f;//-70
-                            double in_max_y = 233.0f ;//233
-                            double out_min_y = 32.0f;//32
-                            double out_max_y = 0.0f;//0
-                            double serial_y = out_min_y + (lightPos0.y - in_min_y) * (out_max_y - out_min_y) / (in_max_y - in_min_y);
-
-                            int len = snprintf(buf, sizeof(buf), "%.2f,%.2f\n", serial_x, serial_y);
-                            write(serialFD, buf, len);
-                            printf("Sent: %s", buf);
-                        }
-                    }
-                }
-            }
-        } else {
-            // 物体なし or 読み込み失敗
-            noObjectTimer++;
-            if (noObjectTimer > NO_OBJECT_LIMIT) {
-                lightControlMode = false; // 一定時間物体なしでモードOFF
-            }
-            // 物体なしになったら前回の座標をリセット
-            prev_fx = -9999.0;
-            prev_fy = -9999.0;
-            smooth_fx = -9999.0;
-            smooth_fy = -9999.0;
-            history_fx.clear();
-            history_fy.clear();
-            
-            // ▼▼▼ 追加: 物体なしで静止判定リセット ▼▼▼
-            staticObjectTimer = 0; 
-            last_input_fx = -9999.0;
-            last_input_fy = -9999.0;
-            // ▲▲▲ 追加ここまで ▲▲▲
-        }
-        fclose(fp);
+        int len = snprintf(buf, sizeof(buf), "%.2f,%.2f\n", serial_x, serial_y);
+        write(serialFD, buf, len);
+        //printf("LightPos: (%.2f, %.2f, %.2f)\n", lightPos0.x, lightPos0.y, lightPos0.z);
+        printf("Sent: %s", buf);
     }
 }
-
 
 //ベクトルの外積計算
 Vec_3D normcrossprod(Vec_3D v1, Vec_3D v2)
@@ -1009,3 +946,5 @@ void glMyTexPlane(int texID, int w, int h)
     
     glDisable(GL_TEXTURE_2D);  //テクスチャ無効化
 }
+
+
