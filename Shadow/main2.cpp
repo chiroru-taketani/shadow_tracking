@@ -94,9 +94,9 @@ int main(int argc, char *argv[])
      // シリアルポート初期化
     serialFD = initSerial(SERIAL_PORT);
     if (serialFD == -1) {
-        printf("Failed to open serial port: %s\n", SERIAL_PORT);
+        printf("ポートが開けません: %s\n", SERIAL_PORT);
     } else {
-        printf("Serial port opened: %s\n", SERIAL_PORT);
+        printf("ポート開きます！: %s\n", SERIAL_PORT);
     }
 
     glutMainLoop();  //イベント待ち無限ループ
@@ -578,7 +578,7 @@ void mouse1(int button, int state, int x, int y)
             touchPosX.x = (mX[wID]-scanW*reso*0.5)/reso; touchPosX.y = 0.0; touchPosX.z = (mY[wID]-scanH*reso*0.5)/reso;
             double len = sqrt(pow(touchPos.x-touchPosX.x,2)+pow(touchPos.z-touchPosX.z,2));
             touchPos = touchPosX;
-            printf("touchPos = (%f, %f, %f)\n", touchPos.x, touchPos.y, touchPos.z);
+            //printf("touchPos = (%f, %f, %f)\n", touchPos.x, touchPos.y, touchPos.z);
             
             if (shadowVal==0 && len<10.0) {  //影を動かす
                 lightVec.x = lightCollPos.x-touchPos.x;
@@ -593,12 +593,12 @@ void mouse1(int button, int state, int x, int y)
             else {
                 //タッチ位置シャドウ画像画素値
                 shadowVal = shadowAreaGrayImage.at<unsigned char>(mY[wID], mX[wID]);
-                printf("shadowVal = %d\n", shadowVal);
+                //printf("shadowVal = %d\n", shadowVal);
                 
                 //
                 lightVec.x = lightPos0.x-touchPos.x; lightVec.y = lightPos0.y-touchPos.y; lightVec.z = lightPos0.z-touchPos.z;
                 lightVec = vectorNormalize(lightVec);
-                printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
+                //printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
                 double t = (objPos.z-touchPos.z)/lightVec.z;
                 lightCollPos.x = touchPos.x+lightVec.x*t;
                 lightCollPos.y = touchPos.y+lightVec.y*t;
@@ -718,7 +718,7 @@ void timer0(int value)
         double tmpX, tmpZ;
         fscanf(fp, "%lf,%lf", &tmpX, &tmpZ);
         fclose(fp);
-        printf("%f, %f\n", tmpX, tmpZ);
+        //printf("%f, %f\n", tmpX, tmpZ);
         touchPos0.x = tmpZ*10.0-scanW/2.0;
         touchPos0.z = tmpX*10.0;
         touchPos0.y = 0.0;
@@ -736,7 +736,7 @@ void timer0(int value)
                 //
                 lightVec.x = lightPos0.x-touchPos.x; lightVec.y = lightPos0.y-touchPos.y; lightVec.z = lightPos0.z-touchPos.z;
                 lightVec = vectorNormalize(lightVec);
-                printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
+                //printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
                 double t = (objPos.z-touchPos.z)/lightVec.z;
                 lightCollPos.x = touchPos.x+lightVec.x*t;
                 lightCollPos.y = touchPos.y+lightVec.y*t;
@@ -744,7 +744,7 @@ void timer0(int value)
             else {
                 double len = sqrt(pow(touchPos.x-touchPos0.x,2)+pow(touchPos.z-touchPos0.z,2));
                 if (len<30.0 && chaseFlg==1) {
-                    printf("Drug\n");
+                    //printf("Drug\n");
                     touchPos = touchPos0;
                     lightVec.x = lightCollPos.x-touchPos0.x;
                     lightVec.y = lightCollPos.y-touchPos0.y;
@@ -769,7 +769,8 @@ void timer0(int value)
         char buf[64];
         //LEDパネル用に変換
         double serial_x = (lightPos0.x + lightW/2.0)*64.0/lightW;
-        double serial_y = (lightH-lightPos0.y)*32.0/lightH;
+        //double serial_y = (lightH - lightPos0.y)*32.0/lightH;
+        double serial_y = (lightH - lightPos0.y)*32.0/lightH;
         // double out_min_x = 0.0f;
         // double out_max_x = 64.0f;//64
         // double serial_x = out_min_x + (lightPos0.x - in_min_x) * (out_max_x - out_min_x) / (in_max_x - in_min_x);
@@ -782,7 +783,7 @@ void timer0(int value)
 
         int len = snprintf(buf, sizeof(buf), "%.2f,%.2f\n", serial_x, serial_y);
         write(serialFD, buf, len);
-        //printf("LightPos: (%.2f, %.2f, %.2f)\n", lightPos0.x, lightPos0.y, lightPos0.z);
+        printf("LightPos: (%.2f, %.2f, %.2f)\n", lightPos0.x, lightPos0.y, lightPos0.z);
         printf("Sent: %s", buf);
     }
 }

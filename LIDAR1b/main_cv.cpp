@@ -46,7 +46,7 @@ double scanAreaW, scanAreaH; // 描画・処理する領域のサイズ(cm) (フ
 double scanReso;             // 1画素あたりのサイズ(cm) (ファイルから読み込む)
 cv::Mat scanImage, binImage; // OpenCVで画像処理を行うための画像データ格納用
 cv::Mat element;             // モルフォロジー処理(膨張・収縮)で使用する構造要素
-cv::Mat shadowMap;           // 影マップ
+
 
 //---- ファイル関連 ----
 FILE *fp;                               // ファイルポインタ
@@ -143,12 +143,6 @@ void display()
 {
     //---- [1] LiDARデータをOpenGLで描画 ----
    
-    if (!shadowMap.empty()) {
-        //cv::rotate(shadowMap, shadowMap, cv::ROTATE_90_COUNTERCLOCKWISE);
-        if (shadowMap.size() != scanImage.size()) {
-            cv::resize(shadowMap, shadowMap, scanImage.size());
-        }
-    }
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // 画面(カラーバッファとデプスバッファ)をクリア
     glLoadIdentity();                                   // 座標変換行列を初期化
@@ -177,7 +171,7 @@ void display()
 
         // 距離が遠い点ほど大きく描画し、スキャン点間の隙間を埋める
         // 距離の平方根に比例させることで、変化を緩やかにしている
-        double circleR = 50.0 * sqrt(len) * tan(scanAngleStep * M_PI / 180.0 / 2); // 描画する円の半径を計算
+        double circleR = 80.0 * sqrt(len) * tan(scanAngleStep * M_PI / 180.0 / 2); // 描画する円の半径を計算
 
         // スキャン点をテクスチャを貼った四角形として描画
         glPushMatrix();                               // 現在の座標変換行列を保存
@@ -207,10 +201,10 @@ void display()
     cv::flip(scanImage, scanImage, 0);                     // 画像が上下逆に読み込まれるため、垂直方向に反転
     cv::cvtColor(scanImage, binImage, cv::COLOR_BGR2GRAY); // 処理のためにグレースケール画像に変換
 
-    // モルフォロジー処理でノイズ除去と領域の結合を行う
-    cv::dilate(binImage, binImage, element, cv::Point(-1, -1), 2); // 2回膨張させて、スキャン点間の隙間を埋める
-    cv::erode(binImage, binImage, element, cv::Point(-1, -1), 2);  // 2回収縮させて、膨張した領域を元に戻しつつ、ノイズを除去
-    cv::dilate(binImage, binImage, element, cv::Point(-1,-1), 5); // 必要なら再度膨張
+    // // モルフォロジー処理でノイズ除去と領域の結合を行う
+    // cv::dilate(binImage, binImage, element, cv::Point(-1, -1), 2); // 2回膨張させて、スキャン点間の隙間を埋める
+    // cv::erode(binImage, binImage, element, cv::Point(-1, -1), 2);  // 2回収縮させて、膨張した領域を元に戻しつつ、ノイズを除去
+    // cv::dilate(binImage, binImage, element, cv::Point(-1,-1), 5); // 必要なら再度膨張
 
     //---- [3] 輪郭検出と重心計算 ----
     std::vector<std::vector<cv::Point>> contours; // 検出された輪郭の情報を格納するベクター
@@ -236,7 +230,7 @@ void display()
             footPoints.push_back(pointF); // 変換後の実世界座標を格納
              printf("%f, %f\n", pointF.x, pointF.y); // (デバッグ用)座標をコンソールに表示
 
-             break; // 最初に検出した物体の重心位置のみを記録 (複数物体の検出は行わない)
+            //  break; // 最初に検出した物体の重心位置のみを記録 (複数物体の検出は行わない)
         }
     }
      printf("%ld\n", footPoints.size()); // (デバッグ用)検出した物体数を表示
