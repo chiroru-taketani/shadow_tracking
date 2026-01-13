@@ -198,13 +198,14 @@ void display()
     //---- [2] OpenGLの描画結果をOpenCVで画像処理 ----
     // OpenGLのフレームバッファからピクセルデータを読み取り、scanImageに格納
     glReadPixels(0, 0, scanImage.cols, scanImage.rows, GL_BGR, GL_UNSIGNED_BYTE, scanImage.data);
-    cv::flip(scanImage, scanImage, 0);                     // 画像が上下逆に読み込まれるため、垂直方向に反転
+    cv::flip(scanImage, scanImage, 0);// 画像が上下逆に読み込まれるため、垂直方向に反転
     cv::cvtColor(scanImage, binImage, cv::COLOR_BGR2GRAY); // 処理のためにグレースケール画像に変換
 
     // // モルフォロジー処理でノイズ除去と領域の結合を行う
-    // cv::dilate(binImage, binImage, element, cv::Point(-1, -1), 2); // 2回膨張させて、スキャン点間の隙間を埋める
-    // cv::erode(binImage, binImage, element, cv::Point(-1, -1), 2);  // 2回収縮させて、膨張した領域を元に戻しつつ、ノイズを除去
-    // cv::dilate(binImage, binImage, element, cv::Point(-1,-1), 5); // 必要なら再度膨張
+    cv::dilate(binImage, binImage, element, cv::Point(-1, -1), 2); // 2回膨張させて、スキャン点間の隙間を埋める
+    cv::erode(binImage, binImage, element, cv::Point(-1, -1), 2);  // 2回収縮させて、膨張した領域を元に戻しつつ、ノイズを除去
+    cv::dilate(binImage, binImage, element, cv::Point(-1,-1), 5); // 必要なら再度膨張
+    cv::erode(binImage, binImage, element, cv::Point(-1, -1), 2);  // 2回収縮させて、膨張した領域を元に戻しつつ、ノイズを除去
 
     //---- [3] 輪郭検出と重心計算 ----
     std::vector<std::vector<cv::Point>> contours; // 検出された輪郭の情報を格納するベクター
@@ -215,8 +216,8 @@ void display()
     for (int i = 0; i < contours.size(); i++)
     {                                           // 検出された全ての輪郭についてループ
         double area = contourArea(contours[i]); // 輪郭の面積を計算
-        if (area > 100)
-        { // 面積が70ピクセルより大きいものだけを物体として認識 (ノイズ除去)
+        if (area > 500)
+        { // 面積が50ピクセルより大きいものだけを物体として認識 (ノイズ除去)
             
             // 輪郭のモーメントを計算して、重心を求める
             cv::Moments m = cv::moments(contours[i]);
@@ -230,7 +231,10 @@ void display()
             footPoints.push_back(pointF); // 変換後の実世界座標を格納
              printf("%f, %f\n", pointF.x, pointF.y); // (デバッグ用)座標をコンソールに表示
 
-            //  break; // 最初に検出した物体の重心位置のみを記録 (複数物体の検出は行わない)
+            if (footPoints.size() >= 1) {
+                break;
+            }
+// break; // 複数物体を検出するためにbreakを削除
         }
     }
      printf("%ld\n", footPoints.size()); // (デバッグ用)検出した物体数を表示

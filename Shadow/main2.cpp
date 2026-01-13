@@ -161,7 +161,7 @@ void initGL()
     glutMotionFunc(motion1);  //マウスドラッグコールバック関数の指定
     glutKeyboardFunc(keyboard);  //キーボードコールバック関数の指定
     //各種設定
-    glClearColor(0.0, 0.2, 0.2, 1.0);  //ウィンドウクリア色の指定（RGBA）
+    glClearColor(0.0, 0.0, 0.0, 1.0);  //ウィンドウクリア色の指定（RGBA）
     glEnable(GL_DEPTH_TEST);  //デプスバッファの有効化
     glEnable(GL_NORMALIZE);  //ベクトル正規化有効化
     glEnable(GL_BLEND);  //アルファチャンネル有効化
@@ -713,21 +713,32 @@ void timer0(int value)
     FILE *fp = fopen("../LIDAR1b/footpoint.txt", "r");
     footNum = 0;
     if (fp!=NULL) {
+        //------ファイル読み込み------
         int tmpNum;
-        fscanf(fp, "%d", &tmpNum);
+        fscanf(fp, "%d", &tmpNum);//物体の数を読み込む
         double tmpX, tmpZ;
-        fscanf(fp, "%lf,%lf", &tmpX, &tmpZ);
-        fclose(fp);
-        //printf("%f, %f\n", tmpX, tmpZ);
-        touchPos0.x = tmpZ*10.0-scanW/2.0;
-        touchPos0.z = tmpX*10.0;
-        touchPos0.y = 0.0;
-        //printf("touchPos0 = (%f, %f, %f)\n", touchPos0.x, touchPos0.y, touchPos0.z);
+        fscanf(fp, "%lf,%lf", &tmpX, &tmpZ);//物体の位置を読み込む(cm)
+        fclose(fp);//ファイルを閉じる
+        printf("footpoint(cm):%f, %f\n", tmpX, tmpZ);
+        //---------------------------
 
+        //----座標変換----
+        touchPos0.x = (tmpX*10) + scanW/2.0;
+        touchPos0.z = tmpZ*10;
+        touchPos0.y = 0.0;
+        printf("touchPos0(mm) = (%f, %f, %f)\n", touchPos0.x, touchPos0.y, touchPos0.z);
+        //----------------
+
+        //---画像の座標変換---
         int imgX, imgY;
-        imgX = (touchPos0.x-(-scanW/2.0))/scanW*shadowAreaGrayImage.cols;
-        imgY = (touchPos0.z-(-scanH/2.0))/scanH*shadowAreaGrayImage.rows;
+        // imgX = (touchPos0.x-(-scanW/2.0))/scanW*shadowAreaGrayImage.cols;
+        // imgY = (touchPos0.z-(-scanH/2.0))/scanH*shadowAreaGrayImage.rows;
+        imgX = touchPos0.x ;
+        imgY = touchPos0.z ;
         unsigned char shadowVal0 = shadowAreaGrayImage.at<unsigned char>(imgY, imgX);
+        printf("shadowVal0 = %d\n", shadowVal0);
+        printf("img(px) = (%d, %d)\n", imgX, imgY);
+        //----------------
 
         if (shadowVal0==0) {
             if (chaseFlg==0) {
