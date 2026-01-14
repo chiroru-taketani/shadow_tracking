@@ -46,6 +46,13 @@ Vec_3D vectorNormalize(Vec_3D v0);
 void glMyTexPlane(int texID, int w, int h);
 void scene();
 
+//マッピング関数
+double mapRange(double value, double oldMin, double oldMax, double newMin, double newMax) {
+    return (value - oldMin) * (newMax - newMin) / (oldMax - oldMin) + newMin;
+}
+// 使い方
+//double result = mapRange(元の数字, 元の数字の最小値, 元の数字の最大値, 新しい数字の最小値, 新しい数字の最大値);
+
 
 //===============グローバル変数 初期設定用構造体==============
 
@@ -64,7 +71,7 @@ struct AreaConfig {
     double aspectRate = 1.0 / 2.0; // LEDパネルのアスペクト比 (縦/横)
     double lightW = 256.0;  // LEDパネルの横幅
     double lightH = 128.0; // LEDパネルの縦幅 (lightW * aspectRate)
-    double resolution = 3.0; // 1mmあたりのピクセル数．CG1のサイズが変化（画像処理の精度に影響）
+    double resolution = 2.0; // 1mmあたりのピクセル数．CG1のサイズが変化（画像処理の精度に影響）
 
     double LEDW = 64.0; // LEDパネルの横幅
     double LEDH = 32.0; // LEDパネルの縦幅
@@ -84,9 +91,8 @@ unsigned char shadowVal = 255;  //影かどうか（0は影）
 struct InteractionConfig{
     double dist = 30;  //ドラックの認識精度（mm）
 } g_interaction;
+
 // =================================================
-
-
 
 //変数
 // --- ウィンドウとマウスの状態
@@ -164,6 +170,7 @@ int initSerial(const char *portName) {
 
     return fd;
 }
+
 
 //初期化関数
 void initGL()
@@ -684,6 +691,7 @@ void motion1(int x, int y)
         double t = (lightPos0.z-touchPos.z)/lightVec.z;
         lightPos0.x = touchPos.x+lightVec.x*t;
         lightPos0.y = touchPos.y+lightVec.y*t;
+        //printf("光源位置: x = %f, y = %f\n", lightPos0.x, lightPos0.y);
     }
 
     
@@ -735,6 +743,7 @@ void keyboard(unsigned char key, int x, int y)
     }
 }
 
+//timer0内でLiDARデータを読み込み，影を動かす計算を行い，新しい光源の位置を決める
 void updateLidarInteraction(){
     FILE *fp = fopen("../LIDAR1b/footpoint.txt", "r");
     if(fp == NULL) return;
@@ -777,6 +786,8 @@ void updateLidarInteraction(){
                 lightPos0.x = touchPos.x+lightVec.x*t;
                 lightPos0.y = touchPos.y+lightVec.y*t;
 
+                printf("光源位置: x = %f, y = %f\n", lightPos0.x, lightPos0.y);
+
             }else{
                 chaseFlg = 0;
             }
@@ -788,18 +799,20 @@ void updateLidarInteraction(){
 
 }
 
-//2.シリアル通信の送信処理
+// timer0内でシリアル通信の送信処理
 void sendLightPosToSerial(){
     if (g_Serial.fd == -1)return;
     
     char sendBuf[64];
-    //LEDパネルの座標系に変換
-    double serial_x = (lightPos0.x + g_areaConfig.lightW/2) * g_areaConfig.LEDW/g_areaConfig.lightW;
-    double serial_y = (lightPos0.y + g_areaConfig.lightH) * g_areaConfig.LEDH/g_areaConfig.lightH;
 
-    int len = snprintf(sendBuf, sizeof(sendBuf), "%.2f %.2f\n", serial_x, serial_y);
+    //LEDパネルの座標系に変換64*32
+    double serial_x = mapRange(lightPos0.x, -g_areaConfig.lightW/2.0, g_areaConfig.lightW/2.0, 0.0, g_areaConfig.LEDW);
+    double serial_y = mapRange(lightPos0.y, 0.0, g_areaConfig.lightH, 0.0, g_areaConfig.LEDH);
+
+    int len = snprintf(sendBuf, sizeof(sendBuf), "%d,%d\n", (int)serial_x, (int)serial_y);
+
     write(g_Serial.fd, sendBuf, len);
-    
+    printf("送信:%s\n", sendBuf);
 }
 
 //タイマーコールバック関数
