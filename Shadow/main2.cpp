@@ -67,7 +67,7 @@ struct AppConfig {
 // --- 空間・エリアの設定 ---
 struct AreaConfig {
     double scanW = 400.0; // スキャンエリアの横幅 (mm)
-    double scanH = 360.0; // スキャンエリアの縦幅 (mm)
+    double scanH = 200.0; // スキャンエリアの縦幅 (mm)
     double aspectRate = 1.0 / 2.0; // LEDパネルのアスペクト比 (縦/横)
     double lightW = 256.0;  // LEDパネルの横幅
     double lightH = 128.0; // LEDパネルの縦幅 (lightW * aspectRate)
@@ -89,8 +89,14 @@ int chaseFlg = 0;       // LIDARによる追従状態 (0:未検知/待機, 1:追
 unsigned char shadowVal = 255;  //影かどうか（0は影）
 
 struct InteractionConfig{
-    double dist = 30;  //ドラックの認識精度（mm）
+    double dist = 30;  //影と手の認識距離（mm）
 } g_interaction;
+
+struct ObjectConfig{
+      double scaleX = 30.0;
+      double scaleY = 30.0;
+      double scaleZ = 30.0;
+} g_object;
 
 // =================================================
 
@@ -270,14 +276,16 @@ void initGL()
     frameImage1 = cv::Mat(cv::Size(TEX_SIZE, TEX_SIZE), CV_8UC4);
     
     //表示パネルサイズ・位置
-    objPos.u = 50.0;  //横幅
+    objPos.u = 50.0;  //テクスチャオブジェクトの横幅
     objPos.x = 0.0; 
     objPos.y = objPos.u*objPos.t/objPos.s*0.5; 
-    objPos.z = 100.0;  //位置
+    objPos.z = g_areaConfig.scanH/2.0 + g_object.scaleZ/2.0;  //位置mm
     
     //光源位置
-    lightPos0.x = 0.0; lightPos0.y = g_areaConfig.lightH/2.0; lightPos0.z = g_areaConfig.scanH/2.0;
-    lightCollPos.z = objPos.z;  //光源と物体との衝突位置
+    lightPos0.x = 0.0;
+    lightPos0.y = g_areaConfig.lightH/2.0; //光源の高さmm
+    lightPos0.z = g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0; //光源の位置mm
+    lightCollPos.z = objPos.z; //光源と物体との衝突位置
 }
 
 //ユーザに知覚させたいオブジェクトの描画
@@ -299,9 +307,9 @@ void scene()
         glDisable(GL_LIGHTING);
         glColor4d(1.0, 0.0, 0.0, 1.0);
         glPushMatrix();
-        glTranslated(0.0, 15.0, objPos.z);
-        glScaled(30.0, 30.0, 30.0);
-       glutSolidCube(1.0);
+        glTranslated(0.0, g_object.scaleY/2.0, objPos.z);
+        glScaled(g_object.scaleX, g_object.scaleY, g_object.scaleZ);
+        glutSolidCube(1.0);
         glPopMatrix();
        
     }
@@ -310,8 +318,8 @@ void scene()
         glDisable(GL_LIGHTING);
         glColor4d(1.0, 0.0, 0.0, 1.0);
         glPushMatrix();
-        glTranslated(40.0, 15.0, objPos.z);
-        glScaled(30.0, 30.0, 30.0);
+        glTranslated(40.0, g_object.scaleY/2.0, objPos.z);
+        glScaled(g_object.scaleX, g_object.scaleY, g_object.scaleZ);
         glutSolidCube(1.0);
         glPopMatrix();
 
@@ -325,7 +333,22 @@ void scene()
     }
     
     if (g_appConfig.dispMode) {
-        //LED光源位置
+
+
+        //認識範囲
+        // glDisable(GL_LIGHTING);
+        // glColor4d(1.0, 0.0, 0.0, 1.0);
+        // glLineWidth(1.0);
+        // glPushMatrix();
+        // glBegin(GL_LINE_LOOP);
+        // glVertex3d(g_areaConfig.scanW/2.0, 0.3, g_areaConfig.scanH/2.0);
+        // glVertex3d(g_areaConfig.scanW/2.0, 0.3, -g_areaConfig.scanH/2.0);
+        // glVertex3d(-g_areaConfig.scanW/2.0, 0.3, -g_areaConfig.scanH/2.0);
+        // glVertex3d(-g_areaConfig.scanW/2.0, 0.3, g_areaConfig.scanH/2.0);
+        // glEnd();
+        // glPopMatrix();
+        
+        //LED光源位置 //緑
         glDisable(GL_LIGHTING);
         glColor4d(0.0, 1.0, 0.0, 1.0);
         glPushMatrix();
@@ -343,6 +366,7 @@ void scene()
         glutSolidSphere(1.0, 36, 18);
         glPopMatrix();
         
+        //マウスのタッチ位置
         glColor4d(1.0, 0.0, 0.0, 1.0);
         glPushMatrix();
         glTranslated(touchPos.x, 0.0, touchPos.z);
@@ -502,7 +526,7 @@ void display1()
     glColor4d(1.0, 1.0, 1.0, 1.0);
     glPushMatrix();
     glTranslated(0.0, -1.0, 0.0);
-    glScaled(g_areaConfig.scanW*1.01, 1.0, g_areaConfig.scanH*1.01);
+    glScaled(g_areaConfig.scanW*3.0, 1.0, g_areaConfig.scanH*3.0);
     glBegin(GL_QUADS);
     glVertex3d(-0.5, 0.0, 0.5);
     glVertex3d(0.5, 0.0, 0.5);
@@ -622,7 +646,9 @@ void mouse1(int button, int state, int x, int y)
         if (button==GLUT_LEFT_BUTTON) {
             //タッチ位置
             Vec_3D touchPosX;
-            touchPosX.x = (g_winInfo[wID].mX-g_areaConfig.scanW*g_areaConfig.resolution*0.5)/g_areaConfig.resolution; touchPosX.y = 0.0; touchPosX.z = (g_winInfo[wID].mY-g_areaConfig.scanH*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
+            touchPosX.x = (g_winInfo[wID].mX-g_areaConfig.scanW*g_areaConfig.resolution*0.5)/g_areaConfig.resolution; 
+            touchPosX.y = 0.0; 
+            touchPosX.z = (g_winInfo[wID].mY-g_areaConfig.scanH*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
             double len = sqrt(pow(touchPos.x-touchPosX.x,2)+pow(touchPos.z-touchPosX.z,2));
             touchPos = touchPosX;
             //printf("touchPos = (%f, %f, %f)\n", touchPos.x, touchPos.y, touchPos.z);
@@ -674,14 +700,16 @@ void motion1(int x, int y)
 {
     int wID = 1;
     
-    if (g_winInfo[wID].mButton==GLUT_RIGHT_BUTTON) {
+    if (g_winInfo[wID].mButton==GLUT_RIGHT_BUTTON) {//回転
         //マウスの移動量を角度変化量に変換
         g_Cam[wID].degY = g_Cam[wID].degY+(g_winInfo[wID].mX-x)*0.5;  //マウス横方向→水平角
         g_Cam[wID].degX = g_Cam[wID].degX+(y-g_winInfo[wID].mY)*0.5;  //マウス縦方向→垂直角
     }
     else if (g_winInfo[wID].mButton==GLUT_LEFT_BUTTON && shadowVal==0) {
         //タッチ位置
-        touchPos.x = (g_winInfo[wID].mX-g_areaConfig.scanW*g_areaConfig.resolution*0.5)/g_areaConfig.resolution; touchPos.y = 0.0; touchPos.z = (g_winInfo[wID].mY-g_areaConfig.scanH*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
+        touchPos.x = (g_winInfo[wID].mX-g_areaConfig.scanW*g_areaConfig.resolution*0.5)/g_areaConfig.resolution; 
+        touchPos.y = 0.0; 
+        touchPos.z = (g_winInfo[wID].mY-g_areaConfig.scanH*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
         
         lightVec.x = lightCollPos.x-touchPos.x;
         lightVec.y = lightCollPos.y-touchPos.y;
@@ -699,7 +727,7 @@ void motion1(int x, int y)
     g_winInfo[wID].mX = x; g_winInfo[wID].mY = y;
 }
 
-//キーボードコールバック関数(key:キーの種類，x,y:座標)
+//キーボードコールバック関数
 void keyboard(unsigned char key, int x, int y)
 {
     switch (key) {
@@ -719,7 +747,7 @@ void keyboard(unsigned char key, int x, int y)
 
          lightPos0.x = 0.0; 
          lightPos0.y = g_areaConfig.lightH/2.0; 
-         lightPos0.z = g_areaConfig.scanH/2.0;
+         lightPos0.z =  g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0;
             break;
 
         case '1'://立方体
@@ -752,18 +780,26 @@ void updateLidarInteraction(){
     double tmpX,tmpZ;
     if(fscanf(fp,"%d",&tmpNum) == 1 && fscanf(fp, "%lf,%lf", &tmpX, &tmpZ) == 2){
         //座標変換(cm -> mm)
-        touchPos0.x = (tmpX * 10.0) + g_areaConfig.scanW/2.0;
-        touchPos0.z = tmpZ * 10.0;
-        touchPos0.y  = 0.0;
+        touchPos0.x = -(tmpX * 10.0) ;
+        touchPos0.y = 0.0;
+        touchPos0.z  = (tmpZ * 10.0) - g_areaConfig.scanH/2.0;
+
+        printf("touchPos0: (%f, %f, %f)\n", touchPos0.x, touchPos0.y, touchPos0.z);
 
         //画面上の座標に変換(mm → px)
-        int imgX =(int)(touchPos0.x * g_areaConfig.resolution);
-        int imgY = (int)(touchPos0.y * g_areaConfig.resolution);
+        double imgX = (touchPos0.x + g_areaConfig.scanW/2.0)*g_areaConfig.resolution;
+        double imgY = (touchPos0.z + g_areaConfig.scanH/2.0)*g_areaConfig.resolution;
+
+        
+        printf("img X: %f, img Y: %f\n",imgX,imgY);
+
+
 
         if(imgX >= 0 && imgX < shadowAreaGrayImage.cols && imgY >= 0 && imgY < shadowAreaGrayImage.rows){
 
             unsigned char shadowVal0 = shadowAreaGrayImage.at<unsigned char>(imgY, imgX);//色の確認，触った座標の色
-
+            printf("shadowVal0: %d\n",shadowVal0);
+            //imshow("shadowAreaGrayImage", shadowAreaGrayImage);
             if(shadowVal0 == 0){ //影の中にいる場合
                 if(chaseFlg == 0){
                     //追跡開始
@@ -789,7 +825,7 @@ void updateLidarInteraction(){
                 printf("光源位置: x = %f, y = %f\n", lightPos0.x, lightPos0.y);
 
             }else{
-                chaseFlg = 0;
+                chaseFlg = 0;//待機
             }
         }
 
@@ -812,7 +848,7 @@ void sendLightPosToSerial(){
     int len = snprintf(sendBuf, sizeof(sendBuf), "%d,%d\n", (int)serial_x, (int)serial_y);
 
     write(g_Serial.fd, sendBuf, len);
-    printf("送信:%s\n", sendBuf);
+    //printf("送信:%s\n", sendBuf);
 }
 
 //タイマーコールバック関数
