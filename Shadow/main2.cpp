@@ -46,34 +46,76 @@ Vec_3D vectorNormalize(Vec_3D v0);
 void glMyTexPlane(int texID, int w, int h);
 void scene();
 
-//グローバル変数
-int winID[3];  //ウィンドウID
-double eDist[2], eDegX[2], eDegY[2];  //視点極座標
-int mX[2], mY[2], mState[2], mButton[2];  //マウス座標
-int winW[3], winH[3];  //ウィンドウサイズ
-double fr = 30.0;
+
+//===============グローバル変数 初期設定用構造体==============
+
+// --- アプリケーション全体の管理状態 ---
+struct AppConfig {
+    int dispMode = 0;       // 0:通常表示, 1:デバッグ用ガイド表示（d）
+    int objectFlg = 1;      // 描画する物体の種類 (0:テクスチャ板, 1:立方体, 2:立方体と球体)（数字キー）
+    double frameRate = 30.0; //フレームレート
+    double renderScale = 1.0; //解像度調整用のスケール係数
+} g_appConfig;
+
+// --- 空間・エリアの設定 ---
+struct AreaConfig {
+    double scanW = 400.0; // スキャンエリアの横幅 (mm)
+    double scanH = 360.0; // スキャンエリアの縦幅 (mm)
+    double aspectRate = 1.0 / 2.0; // LEDパネルのアスペクト比 (縦/横)
+    double lightW = 256.0;  // LEDパネルの横幅
+    double lightH = 128.0; // LEDパネルの縦幅 (lightW * aspectRate)
+    double resolution = 3.0; // 1mmあたりのピクセル数．CG1のサイズが変化（画像処理の精度に影響）
+
+    double LEDW = 64.0; // LEDパネルの横幅
+    double LEDH = 32.0; // LEDパネルの縦幅
+} g_areaConfig;
+
+
+//---シリアル通信の情報---
+struct SerialConfig {
+    int fd = -1;  // ファイルディスクリプタ（-1は未接続）
+    const char* port = "/dev/cu.usbserial-10";  // 通信ポートのパス
+    const int baud = 115200;    // 通信速度 (bps)
+} g_Serial;
+
+int chaseFlg = 0;       // LIDARによる追従状態 (0:未検知/待機, 1:追従中)
+unsigned char shadowVal = 255;  //影かどうか（0は影）
+
+struct InteractionConfig{
+    double dist = 30;  //ドラックの認識精度（mm）
+} g_interaction;
+// =================================================
+
+
+
+//変数
+// --- ウィンドウとマウスの状態
+struct WindowInfo {
+    int id;     // GLUTのウィンドウID
+    int W;      // ウィンドウの横幅 (px)
+    int H;      // ウィンドウの縦幅 (px)
+    int mX, mY;  // マウスの位置 (px)
+    int mButton, mState;  // 最後に操作されたボタンの種類と状態 (UP/DOWN)
+} g_winInfo[3];
+
+// --- 視点（カメラ）の情報 ---
+struct Camera {
+    double dist;  // 注視点からの距離
+    double degX;  // 垂直方向の回転角度 (度)
+    double degY;  // 水平方向の回転角度 (度)
+}g_Cam[2];
+
 Vec_3D objPos;  //影物体
 Vec_3D lightPos0;  //LED光源座標
-int dispMode = 0;  //表示モード
-double scanW = 400.0, scanH = 360.0;  //スキャンエリア
-double aspectRate = 1.0/2.0;
-double lightW = 256.0, lightH = lightW*aspectRate;  //照明エリア（2:1としている）
-double reso = 2.0;  //
 Vec_3D touchPos, touchPos0;  //手を触れた場所
-unsigned char shadowVal = 255;  //影かどうか（0は影）
+
 Vec_3D lightVec;  //光線ベクトル
 Vec_3D lightCollPos;  //光線が物体と当たる場所
 Vec_3D footPoint[POINTMAX];
 int footNum;
-int chaseFlg = 0;
-int ObjectFlg = 1;
 
 cv::Mat frameImage0, frameImage, frameImage1, shadowAreaImage, shadowAreaGrayImage;
 
-// シリアル通信用
-int serialFD = -1;
-const char* SERIAL_PORT = "/dev/cu.usbserial-10"; // 自動検出したポート
-const int BAUD_RATE = 115200;
 
 //テクスチャ生成関数のパラメータ（）
 static double genfunc[][4] = {
@@ -83,8 +125,6 @@ static double genfunc[][4] = {
     {0.0, 0.0, 0.0, 1.0},
 };
 
-double rDisp = 1.0;
-
 //メイン関数
 int main(int argc, char *argv[])
 {
@@ -92,11 +132,11 @@ int main(int argc, char *argv[])
     initGL();  //初期設定
 
      // シリアルポート初期化
-    serialFD = initSerial(SERIAL_PORT);
-    if (serialFD == -1) {
-        printf("ポートが開けません: %s\n", SERIAL_PORT);
+    g_Serial.fd = initSerial(g_Serial.port);
+    if (g_Serial.fd == -1) {
+        printf("ポートが開けません: %s\n", g_Serial.port);
     } else {
-        printf("ポート開きます！: %s\n", SERIAL_PORT);
+        printf("ポート開きます！: %s\n", g_Serial.port);
     }
 
     glutMainLoop();  //イベント待ち無限ループ
@@ -132,13 +172,13 @@ void initGL()
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH | GLUT_DOUBLE);  //ディスプレイモードの指定
     glutInitWindowSize(TEX_SIZE, TEX_SIZE);  //ウィンドウサイズの指定
     glutInitWindowPosition(0, 0);  //ウィンドウ位置の指定
-    winID[0] = glutCreateWindow("CG0");  //ウィンドウの生成
+    g_winInfo[0].id = glutCreateWindow("CG0");  //ウィンドウの生成
     //コールバック関数の指定
     glutDisplayFunc(display0);  //ディスプレイコールバック関数の指定
     glutReshapeFunc(reshape0);  //リシェイプコールバック関数の指定
     glutMouseFunc(mouse0);  //マウスクリックコールバック関数の指定
     glutMotionFunc(motion0);  //マウスドラッグコールバック関数の指定
-    glutTimerFunc(1000/fr, timer0, 0);  //タイマー
+    glutTimerFunc(1000/g_appConfig.frameRate, timer0, 0);  //タイマー
     glutKeyboardFunc(keyboard);  //キーボードコールバック関数の指定
     //各種設定
     glClearColor(0.0, 1.0, 0.0, 1.0);  //ウィンドウクリア色の指定（RGBA）
@@ -151,9 +191,9 @@ void initGL()
 
     //描画ウィンドウ生成1（影エリア映像の生成）
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH | GLUT_DOUBLE);  //ディスプレイモードの指定
-    glutInitWindowSize(scanW*reso, scanH*reso);  //ウィンドウサイズの指定
+    glutInitWindowSize(g_areaConfig.scanW * g_areaConfig.resolution,  g_areaConfig.scanH * g_areaConfig.resolution);  //ウィンドウサイズの指定
     glutInitWindowPosition(512, 0);  //ウィンドウ位置の指定
-    winID[1] = glutCreateWindow("CG1");  //ウィンドウの生成
+    g_winInfo[1].id = glutCreateWindow("CG1");  //ウィンドウの生成
     //コールバック関数の指定
     glutDisplayFunc(display1);  //ディスプレイコールバック関数の指定
     glutReshapeFunc(reshape1);  //リシェイプコールバック関数の指定
@@ -169,13 +209,13 @@ void initGL()
     glEnable(GL_ALPHA_TEST);  //アルファテスト有効化
     glAlphaFunc(GL_GREATER, 0.1);  //アルファ値比較関数の設定
     //視点関係
-    eDist[1] = 250.0; eDegX[1] = 90.0; eDegY[1] = 0.0;  //視点極座標
+    g_Cam[1].dist = 250.0; g_Cam[1].degX = 90.0; g_Cam[1].degY = 0.0;  //視点極座標
 
     //描画ウィンドウ生成2（照明用映像の生成）
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH | GLUT_DOUBLE);  //ディスプレイモードの指定
-    glutInitWindowSize(800, 800*aspectRate);  //ウィンドウサイズの指定
-    glutInitWindowPosition(512, scanH*reso+100);  //ウィンドウ位置の指定
-    winID[2] = glutCreateWindow("CG2");  //ウィンドウの生成
+    glutInitWindowSize(800, 800*g_areaConfig.aspectRate);  //ウィンドウサイズの指定
+    glutInitWindowPosition(512, g_areaConfig.scanH*g_areaConfig.resolution+100);  //ウィンドウ位置の指定
+    g_winInfo[2].id = glutCreateWindow("CG2");  //ウィンドウの生成
     //コールバック関数の指定
     glutDisplayFunc(display2);  //ディスプレイコールバック関数の指定
     glutReshapeFunc(reshape2);  //リシェイプコールバック関数の指定
@@ -192,7 +232,7 @@ void initGL()
     //光源やテクスチャの初期設定
     cv::Mat textureImage;
     for (int i=0; i<3; i++) {
-        glutSetWindow(winID[i]);  //設定対象ウィンドウ
+        glutSetWindow(g_winInfo[i].id);  //設定対象ウィンドウ
 
         //テクスチャ
         //テクスチャオブジェクト生成(#100)
@@ -229,14 +269,14 @@ void initGL()
     objPos.z = 100.0;  //位置
     
     //光源位置
-    lightPos0.x = 0.0; lightPos0.y = lightH/2.0; lightPos0.z = scanH/2.0;
+    lightPos0.x = 0.0; lightPos0.y = g_areaConfig.lightH/2.0; lightPos0.z = g_areaConfig.scanH/2.0;
     lightCollPos.z = objPos.z;  //光源と物体との衝突位置
 }
 
 //ユーザに知覚させたいオブジェクトの描画
 void scene()
 {
-    if(ObjectFlg == 0) {
+    if(g_appConfig.objectFlg == 0) {
         //オブジェクト（本体）
         glDisable(GL_LIGHTING);
         glColor4d(1.0, 1.0, 1.0, 1.0);
@@ -247,7 +287,7 @@ void scene()
         glPopMatrix();
     }
     
-    if (ObjectFlg == 1) {//立方体
+    if (g_appConfig.objectFlg == 1) {//立方体
 
         glDisable(GL_LIGHTING);
         glColor4d(1.0, 0.0, 0.0, 1.0);
@@ -259,7 +299,7 @@ void scene()
        
     }
     
-    if (ObjectFlg == 2) {//立方体と球体
+    if (g_appConfig.objectFlg == 2) {//立方体と球体
         glDisable(GL_LIGHTING);
         glColor4d(1.0, 0.0, 0.0, 1.0);
         glPushMatrix();
@@ -277,7 +317,7 @@ void scene()
         glPopMatrix();
     }
     
-    if (dispMode) {
+    if (g_appConfig.dispMode) {
         //LED光源位置
         glDisable(GL_LIGHTING);
         glColor4d(0.0, 1.0, 0.0, 1.0);
@@ -329,7 +369,7 @@ void display0()
     //投影変換の設定
     glMatrixMode(GL_PROJECTION);  //変換行列の指定（設定対象は投影変換行列）
     glLoadIdentity();  //行列初期化
-    gluPerspective(120.0, (double)winW[0]/(double)winH[0], 50.0, 1000.0);  //透視投影ビューボリューム設定
+    gluPerspective(120.0, (double)g_winInfo[0].W / (double)g_winInfo[0].H, 50.0, 1000.0);  //透視投影ビューボリューム設定
     
     //モデルビュー変換の設定
     glMatrixMode(GL_MODELVIEW);  //変換行列の指定（設定対象はモデルビュー変換行列）
@@ -338,7 +378,7 @@ void display0()
     
     scene();  //ユーザび知覚させたいオブジェクトの描画
     
-    if (dispMode) {
+    if (g_appConfig.dispMode) {
         glMatrixMode(GL_PROJECTION);  //変換行列の指定（設定対象は投影変換行列）
         glLoadIdentity();  //行列初期化
         glMatrixMode(GL_MODELVIEW);  //変換行列の指定（設定対象はモデルビュー変換行列）
@@ -356,7 +396,7 @@ void display0()
     }
 
     //描画したシーンを画像としてframeImageに格納
-    glReadPixels(0, 0, winW[0]*rDisp, winH[0]*rDisp, GL_BGR, GL_UNSIGNED_BYTE, frameImage0.data);
+    glReadPixels(0, 0, g_winInfo[0].W * g_appConfig.renderScale, g_winInfo[0].H * g_appConfig.renderScale, GL_BGR, GL_UNSIGNED_BYTE, frameImage0.data);
     cv::resize(frameImage0, frameImage, frameImage.size());
     cv::flip(frameImage, frameImage, 0);
     
@@ -390,21 +430,21 @@ void display1()
     
     //視点座標の計算
     Vec_3D e;
-    e.x = eDist[1]*cos(eDegX[1]*M_PI/180.0)*sin(eDegY[1]*M_PI/180.0);
-    e.y = eDist[1]*sin(eDegX[1]*M_PI/180.0);
-    e.z = eDist[1]*cos(eDegX[1]*M_PI/180.0)*cos(eDegY[1]*M_PI/180.0);
+    e.x = g_Cam[1].dist*cos(g_Cam[1].degX*M_PI/180.0)*sin(g_Cam[1].degY*M_PI/180.0);
+    e.y = g_Cam[1].dist*sin(g_Cam[1].degX*M_PI/180.0);
+    e.z = g_Cam[1].dist*cos(g_Cam[1].degX*M_PI/180.0)*cos(g_Cam[1].degY*M_PI/180.0);
     
     //モデルビュー変換の設定
     glMatrixMode(GL_MODELVIEW);  //変換行列の指定（設定対象はモデルビュー変換行列）
     glLoadIdentity();  //行列初期化
-    if (eDegX[1]>90.0) {
+    if (g_Cam[1].degX>90.0) {
         gluLookAt(e.x, e.y, e.z, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0);  //視点視線設定（視野変換行列を乗算）
     }
     else {
         gluLookAt(e.x, e.y, e.z, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);  //視点視線設定（視野変換行列を乗算）
     }
     
-    if (dispMode) {
+    if (g_appConfig.dispMode) {
         scene();  //ユーザび知覚させたいオブジェクトの描画
     }
     
@@ -427,7 +467,7 @@ void display1()
     glTranslated(0.5, 0.5, 0.5);  //テクスチャ座標と同じ0~1になるように0.5だけ平行移動
     glScaled(0.5, 0.5, 0.5);  //視点座標系は-1~1なので，-0.5~0.5になるように縮小
     glRotated(180.0, 1.0, 0.0, 0.0);  //上下反転
-    gluPerspective(120.0, (GLdouble)winW[0]/(GLdouble)winH[0], 50.0, 1000.0);  //display0と同じ投影変換
+    gluPerspective(120.0, (GLdouble)g_winInfo[0].W / (GLdouble)g_winInfo[0].H, 50.0, 1000.0);  //display0と同じ投影変換
     gluLookAt(lightPos0.x, lightPos0.y, lightPos0.z, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);  //display0と同じ視点
     
     //自動生成されたテクスチャ座標を用いて，床面に相当する平面にdisplay0で生成した映像をテクスチャマッピング
@@ -455,7 +495,7 @@ void display1()
     glColor4d(1.0, 1.0, 1.0, 1.0);
     glPushMatrix();
     glTranslated(0.0, -1.0, 0.0);
-    glScaled(scanW*1.01, 1.0, scanH*1.01);
+    glScaled(g_areaConfig.scanW*1.01, 1.0, g_areaConfig.scanH*1.01);
     glBegin(GL_QUADS);
     glVertex3d(-0.5, 0.0, 0.5);
     glVertex3d(0.5, 0.0, 0.5);
@@ -480,7 +520,7 @@ void display1()
     glutSwapBuffers();  //描画実行
     
     //描画したシーンを画像としてframeImageに格納
-    glReadPixels(0, 0, winW[1]*rDisp, winH[1]*rDisp, GL_BGR, GL_UNSIGNED_BYTE, shadowAreaImage.data);
+    glReadPixels(0, 0, g_winInfo[1].W * g_appConfig.renderScale, g_winInfo[1].H *g_appConfig.renderScale, GL_BGR, GL_UNSIGNED_BYTE, shadowAreaImage.data);
     cv::flip(shadowAreaImage, shadowAreaImage, 0);
     cv::cvtColor(shadowAreaImage, shadowAreaGrayImage, cv::COLOR_BGR2GRAY);
     //cv::imshow("shadowAreaImage", shadowAreaGrayImage);
@@ -496,7 +536,7 @@ void display2()
     glLoadIdentity();  //行列初期化
     
     //照明
-    glColor4d(1.0, 2*lightPos0.y/lightH, 2*lightPos0.y/lightH, 1.0);
+    glColor4d(1.0, 2*lightPos0.y/g_areaConfig.lightH, 2*lightPos0.y/g_areaConfig.lightH, 1.0);
     glPushMatrix();
     glTranslated(-lightPos0.x, lightPos0.y, 0.0);
     glScaled(11.0, 11.0, 1.0);
@@ -511,9 +551,9 @@ void reshape0(int w, int h)
 {
     int wID = 0;
     
-    winW[wID] = w; winH[wID] = h;  //ウィンドウサイズ格納
-    glViewport(0, 0, winW[wID], winH[wID]);  //ビューポート設定
-    frameImage0 = cv::Mat(cv::Size(winW[wID], winH[wID]), CV_8UC3);
+    g_winInfo[wID].W = w; g_winInfo[wID].H = h;  //ウィンドウサイズ格納
+    glViewport(0, 0, g_winInfo[wID].W, g_winInfo[wID].H);  //ビューポート設定
+    frameImage0 = cv::Mat(cv::Size(g_winInfo[wID].W, g_winInfo[wID].H), CV_8UC3);
 }
 
 //リシェイプコールバック関数
@@ -521,18 +561,18 @@ void reshape1(int w, int h)
 {
     int wID = 1;
     
-    winW[wID] = w; winH[wID] = h;  //ウィンドウサイズ格納
+    g_winInfo[wID].W = w; g_winInfo[wID].H = h;  //ウィンドウサイズ格納
     
-    glViewport(0, 0, winW[wID], winH[wID]);  //ビューポート設定
+    glViewport(0, 0, g_winInfo[wID].W, g_winInfo[wID].H);  //ビューポート設定
     
     //投影変換の設定
     glMatrixMode(GL_PROJECTION);  //変換行列の指定（設定対象は投影変換行列）
     glLoadIdentity();  //行列初期化
     //gluPerspective(40.0, (double)winW[wID]/(double)winH[wID], 50.0, 1000.0);  //透視投影ビューボリューム設定
-    glFrustum(-scanW*0.5*0.1, scanW*0.5*0.1, -scanH*0.5*0.1, scanH*0.5*0.1, eDist[wID]*0.1, 1000.0);
+    glFrustum(-g_areaConfig.scanW*0.5*0.1, g_areaConfig.scanW*0.5*0.1, -g_areaConfig.scanH*0.5*0.1, g_areaConfig.scanH*0.5*0.1, g_Cam[wID].dist*0.1, 1000.0);
 
-    winW[wID] = w; winH[wID] = h;  //ウィンドウサイズ格納
-    shadowAreaImage = cv::Mat(cv::Size(winW[wID], winH[wID]), CV_8UC3);
+    g_winInfo[wID].W = w; g_winInfo[wID].H = h;  //ウィンドウサイズ格納
+    shadowAreaImage = cv::Mat(cv::Size(g_winInfo[wID].W, g_winInfo[wID].H), CV_8UC3);
 }
 
 //リシェイプコールバック関数
@@ -540,16 +580,16 @@ void reshape2(int w, int h)
 {
     int wID = 2;
     
-    winW[wID] = w; winH[wID] = h;  //ウィンドウサイズ格納
+    g_winInfo[wID].W = w; g_winInfo[wID].H = h;  //ウィンドウサイズ格納
     
-    glViewport(0, 0, winW[wID], winH[wID]);  //ビューポート設定
+    glViewport(0, 0, g_winInfo[wID].W, g_winInfo[wID].H);  //ビューポート設定
     
     //投影変換の設定
     glMatrixMode(GL_PROJECTION);  //変換行列の指定（設定対象は投影変換行列）
     glLoadIdentity();  //行列初期化
-    gluOrtho2D(-lightW*0.5, lightW*0.5, 0.0, lightH);
+    gluOrtho2D(-g_areaConfig.lightW*0.5, g_areaConfig.lightW*0.5, 0.0, g_areaConfig.lightH);
     
-    winW[wID] = w; winH[wID] = h;  //ウィンドウサイズ格納
+    g_winInfo[wID].W = w; g_winInfo[wID].H = h;  //ウィンドウサイズ格納
 }
 
 //マウスクリックコールバック関数
@@ -559,7 +599,7 @@ void mouse0(int button, int state, int x, int y)
     
     //マウスボタンが押された
     if (state==GLUT_DOWN) {
-        mX[wID] = x; mY[wID] = y; mState[wID] = state; mButton[wID] = button;  //マウス情報保持
+        g_winInfo[wID].mX = x; g_winInfo[wID].mY = y; g_winInfo[wID].mState = state; g_winInfo[wID].mButton = button;  //マウス情報保持
     }
 }
 
@@ -570,12 +610,12 @@ void mouse1(int button, int state, int x, int y)
     
     //マウスボタンが押された
     if (state==GLUT_DOWN) {
-        mX[wID] = x; mY[wID] = y; mState[wID] = state; mButton[wID] = button;  //マウス情報保持
+        g_winInfo[wID].mX = x; g_winInfo[wID].mY = y; g_winInfo[wID].mState = state; g_winInfo[wID].mButton = button;  //マウス情報保持
         
         if (button==GLUT_LEFT_BUTTON) {
             //タッチ位置
             Vec_3D touchPosX;
-            touchPosX.x = (mX[wID]-scanW*reso*0.5)/reso; touchPosX.y = 0.0; touchPosX.z = (mY[wID]-scanH*reso*0.5)/reso;
+            touchPosX.x = (g_winInfo[wID].mX-g_areaConfig.scanW*g_areaConfig.resolution*0.5)/g_areaConfig.resolution; touchPosX.y = 0.0; touchPosX.z = (g_winInfo[wID].mY-g_areaConfig.scanH*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
             double len = sqrt(pow(touchPos.x-touchPosX.x,2)+pow(touchPos.z-touchPosX.z,2));
             touchPos = touchPosX;
             //printf("touchPos = (%f, %f, %f)\n", touchPos.x, touchPos.y, touchPos.z);
@@ -592,7 +632,7 @@ void mouse1(int button, int state, int x, int y)
             }
             else {
                 //タッチ位置シャドウ画像画素値
-                shadowVal = shadowAreaGrayImage.at<unsigned char>(mY[wID], mX[wID]);
+                shadowVal = shadowAreaGrayImage.at<unsigned char>(g_winInfo[wID].mY, g_winInfo[wID].mX);
                 //printf("shadowVal = %d\n", shadowVal);
                 
                 //
@@ -612,14 +652,14 @@ void motion0(int x, int y)
 {
     int wID = 0;
 
-    if (mButton[wID]==GLUT_RIGHT_BUTTON) {
+    if (g_winInfo[wID].mButton==GLUT_RIGHT_BUTTON) {
         //マウスの移動量を角度変化量に変換
-        lightPos0.x += (mX[wID]-x)*0.5;  //マウス横方向→水平角
-        lightPos0.y += (y-mY[wID])*0.5;  //マウス縦方向→垂直角
+        lightPos0.x += (g_winInfo[wID].mX-x)*0.5;  //マウス横方向→水平角
+        lightPos0.y += (y-g_winInfo[wID].mY)*0.5;  //マウス縦方向→垂直角
     }
     
     //マウス座標をグローバル変数に保存
-    mX[wID] = x; mY[wID] = y;
+    g_winInfo[wID].mX = x; g_winInfo[wID].mY = y;
 }
 
 //マウスドラッグコールバック関数
@@ -627,14 +667,14 @@ void motion1(int x, int y)
 {
     int wID = 1;
     
-    if (mButton[wID]==GLUT_RIGHT_BUTTON) {
+    if (g_winInfo[wID].mButton==GLUT_RIGHT_BUTTON) {
         //マウスの移動量を角度変化量に変換
-        eDegY[wID] = eDegY[wID]+(mX[wID]-x)*0.5;  //マウス横方向→水平角
-        eDegX[wID] = eDegX[wID]+(y-mY[wID])*0.5;  //マウス縦方向→垂直角
+        g_Cam[wID].degY = g_Cam[wID].degY+(g_winInfo[wID].mX-x)*0.5;  //マウス横方向→水平角
+        g_Cam[wID].degX = g_Cam[wID].degX+(y-g_winInfo[wID].mY)*0.5;  //マウス縦方向→垂直角
     }
-    else if (mButton[wID]==GLUT_LEFT_BUTTON && shadowVal==0) {
+    else if (g_winInfo[wID].mButton==GLUT_LEFT_BUTTON && shadowVal==0) {
         //タッチ位置
-        touchPos.x = (mX[wID]-scanW*reso*0.5)/reso; touchPos.y = 0.0; touchPos.z = (mY[wID]-scanH*reso*0.5)/reso;
+        touchPos.x = (g_winInfo[wID].mX-g_areaConfig.scanW*g_areaConfig.resolution*0.5)/g_areaConfig.resolution; touchPos.y = 0.0; touchPos.z = (g_winInfo[wID].mY-g_areaConfig.scanH*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
         
         lightVec.x = lightCollPos.x-touchPos.x;
         lightVec.y = lightCollPos.y-touchPos.y;
@@ -648,7 +688,7 @@ void motion1(int x, int y)
 
     
     //マウス座標をグローバル変数に保存
-    mX[wID] = x; mY[wID] = y;
+    g_winInfo[wID].mX = x; g_winInfo[wID].mY = y;
 }
 
 //キーボードコールバック関数(key:キーの種類，x,y:座標)
@@ -659,31 +699,31 @@ void keyboard(unsigned char key, int x, int y)
             exit(0);
             
         case 'd':  //dispMode切り替え
-            dispMode = 1-dispMode;
+            g_appConfig.dispMode = 1-g_appConfig.dispMode;
             break;
             
         case 'r':
-            eDegX[1] = 90.0;
-            eDegY[1] = 0.0;
+            g_Cam[1].degX = 90.0;
+            g_Cam[1].degY = 0.0;
             break;
 
         case 't':
 
          lightPos0.x = 0.0; 
-         lightPos0.y = lightH/2.0; 
-         lightPos0.z = scanH/2.0;
+         lightPos0.y = g_areaConfig.lightH/2.0; 
+         lightPos0.z = g_areaConfig.scanH/2.0;
             break;
 
         case '1'://立方体
-            ObjectFlg = 1;
+            g_appConfig.objectFlg = 1;
             break;
 
         case '2'://立方体と球体
-            ObjectFlg = 2;
+            g_appConfig.objectFlg = 2;
             break;
 
         case '0'://テクスチャ
-            ObjectFlg = 0;
+            g_appConfig.objectFlg = 0;
             break;
 
         case 'f':
@@ -695,108 +735,90 @@ void keyboard(unsigned char key, int x, int y)
     }
 }
 
+void updateLidarInteraction(){
+    FILE *fp = fopen("../LIDAR1b/footpoint.txt", "r");
+    if(fp == NULL) return;
+
+    int tmpNum;
+    double tmpX,tmpZ;
+    if(fscanf(fp,"%d",&tmpNum) == 1 && fscanf(fp, "%lf,%lf", &tmpX, &tmpZ) == 2){
+        //座標変換(cm -> mm)
+        touchPos0.x = (tmpX * 10.0) + g_areaConfig.scanW/2.0;
+        touchPos0.z = tmpZ * 10.0;
+        touchPos0.y  = 0.0;
+
+        //画面上の座標に変換(mm → px)
+        int imgX =(int)(touchPos0.x * g_areaConfig.resolution);
+        int imgY = (int)(touchPos0.y * g_areaConfig.resolution);
+
+        if(imgX >= 0 && imgX < shadowAreaGrayImage.cols && imgY >= 0 && imgY < shadowAreaGrayImage.rows){
+
+            unsigned char shadowVal0 = shadowAreaGrayImage.at<unsigned char>(imgY, imgX);//色の確認，触った座標の色
+
+            if(shadowVal0 == 0){ //影の中にいる場合
+                if(chaseFlg == 0){
+                    //追跡開始
+                    chaseFlg =1;
+                    touchPos = touchPos0;
+                } else {
+                    double len = sqrt(pow(touchPos.x - touchPos0.x, 2) + pow(touchPos.z - touchPos0.z,2));//距離計算
+                    if(len < g_interaction.dist){//距離が一定値未満の場合
+                        touchPos = touchPos0;//座標更新
+                    }
+                }
+
+                //光源位置の計算
+                lightVec.x = lightCollPos.x - touchPos.x;
+                lightVec.y = lightCollPos.y - touchPos.y;
+                lightVec.z = lightCollPos.z - touchPos.z;
+                lightVec = vectorNormalize(lightVec);
+
+                double t = (lightPos0.z-touchPos.z)/lightVec.z;
+                lightPos0.x = touchPos.x+lightVec.x*t;
+                lightPos0.y = touchPos.y+lightVec.y*t;
+
+            }else{
+                chaseFlg = 0;
+            }
+        }
+
+
+    }
+    fclose(fp);
+
+}
+
+//2.シリアル通信の送信処理
+void sendLightPosToSerial(){
+    if (g_Serial.fd == -1)return;
+    
+    char sendBuf[64];
+    //LEDパネルの座標系に変換
+    double serial_x = (lightPos0.x + g_areaConfig.lightW/2) * g_areaConfig.LEDW/g_areaConfig.lightW;
+    double serial_y = (lightPos0.y + g_areaConfig.lightH) * g_areaConfig.LEDH/g_areaConfig.lightH;
+
+    int len = snprintf(sendBuf, sizeof(sendBuf), "%.2f %.2f\n", serial_x, serial_y);
+    write(g_Serial.fd, sendBuf, len);
+    
+}
+
 //タイマーコールバック関数
 void timer0(int value)
 {
-    glutSetWindow(winID[0]);
-    glutTimerFunc(1000/fr, timer0, 0);  //タイマー再設定
-    glutPostRedisplay();  //ディスプレイイベント強制発生
-    
-    glutSetWindow(winID[1]);
-    glutPostRedisplay();  //ディスプレイイベント強制発生
-    
-    glutSetWindow(winID[2]);
-    glutPostRedisplay();  //ディスプレイイベント強制発生
-    
-    
-    int wID = 1;
-    FILE *fp = fopen("../LIDAR1b/footpoint.txt", "r");
-    footNum = 0;
-    if (fp!=NULL) {
-        //------ファイル読み込み------
-        int tmpNum;
-        fscanf(fp, "%d", &tmpNum);//物体の数を読み込む
-        double tmpX, tmpZ;
-        fscanf(fp, "%lf,%lf", &tmpX, &tmpZ);//物体の位置を読み込む(cm)
-        fclose(fp);//ファイルを閉じる
-        printf("footpoint(cm):%f, %f\n", tmpX, tmpZ);
-        //---------------------------
-
-        //----座標変換----
-        touchPos0.x = (tmpX*10) + scanW/2.0;
-        touchPos0.z = tmpZ*10;
-        touchPos0.y = 0.0;
-        printf("touchPos0(mm) = (%f, %f, %f)\n", touchPos0.x, touchPos0.y, touchPos0.z);
-        //----------------
-
-        //---画像の座標変換---
-        int imgX, imgY;
-        // imgX = (touchPos0.x-(-scanW/2.0))/scanW*shadowAreaGrayImage.cols;
-        // imgY = (touchPos0.z-(-scanH/2.0))/scanH*shadowAreaGrayImage.rows;
-        imgX = touchPos0.x ;
-        imgY = touchPos0.z ;
-        unsigned char shadowVal0 = shadowAreaGrayImage.at<unsigned char>(imgY, imgX);
-        printf("shadowVal0 = %d\n", shadowVal0);
-        printf("img(px) = (%d, %d)\n", imgX, imgY);
-        //----------------
-
-        if (shadowVal0==0) {
-            if (chaseFlg==0) {
-                chaseFlg = 1;
-                touchPos = touchPos0;
-                //
-                lightVec.x = lightPos0.x-touchPos.x; lightVec.y = lightPos0.y-touchPos.y; lightVec.z = lightPos0.z-touchPos.z;
-                lightVec = vectorNormalize(lightVec);
-                //printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
-                double t = (objPos.z-touchPos.z)/lightVec.z;
-                lightCollPos.x = touchPos.x+lightVec.x*t;
-                lightCollPos.y = touchPos.y+lightVec.y*t;
-            }
-            else {
-                double len = sqrt(pow(touchPos.x-touchPos0.x,2)+pow(touchPos.z-touchPos0.z,2));
-                if (len<30.0 && chaseFlg==1) {
-                    //printf("Drug\n");
-                    touchPos = touchPos0;
-                    lightVec.x = lightCollPos.x-touchPos0.x;
-                    lightVec.y = lightCollPos.y-touchPos0.y;
-                    lightVec.z = lightCollPos.z-touchPos0.z;
-                    lightVec = vectorNormalize(lightVec);
-                    
-                    double t = (lightPos0.z-touchPos0.z)/lightVec.z;
-                    lightPos0.x = touchPos0.x+lightVec.x*t;
-                    lightPos0.y = touchPos0.y+lightVec.y*t;
-                    touchPos = touchPos0;
-                    chaseFlg = 1;
-                }
-            }
-        }
-        else {
-            chaseFlg = 0;
-        }
+    // 1. 再描画の予約（全ウィンドウ）
+    for (int i = 0; i < 3; i++) {
+        glutSetWindow(g_winInfo[i].id);
+        glutPostRedisplay();
     }
 
-    // シリアル送信
-    if (serialFD != -1) {
-        char buf[64];
-        //LEDパネル用に変換
-        double serial_x = (lightPos0.x + lightW/2.0)*64.0/lightW;
-        //double serial_y = (lightH - lightPos0.y)*32.0/lightH;
-        double serial_y = (lightH - lightPos0.y)*32.0/lightH;
-        // double out_min_x = 0.0f;
-        // double out_max_x = 64.0f;//64
-        // double serial_x = out_min_x + (lightPos0.x - in_min_x) * (out_max_x - out_min_x) / (in_max_x - in_min_x);
+    // 2. LIDARデータの処理と影の追従
+    updateLidarInteraction();
 
-        // double in_min_y = -70.0f;//-70
-        // double in_max_y = 233.0f ;//233
-        // double out_min_y = 32.0f;//32
-        // double out_max_y = 0.0f;//0
-        // double serial_y = out_min_y + (lightPos0.y - in_min_y) * (out_max_y - out_min_y) / (in_max_y - in_min_y);
+    // 3. シリアル通信で光源位置を送信
+    sendLightPosToSerial();
 
-        int len = snprintf(buf, sizeof(buf), "%.2f,%.2f\n", serial_x, serial_y);
-        write(serialFD, buf, len);
-        printf("LightPos: (%.2f, %.2f, %.2f)\n", lightPos0.x, lightPos0.y, lightPos0.z);
-        printf("Sent: %s", buf);
-    }
+    // 4. 次回のタイマー設定
+    glutTimerFunc(1000 / g_appConfig.frameRate, timer0, 0);
 }
 
 //ベクトルの外積計算
