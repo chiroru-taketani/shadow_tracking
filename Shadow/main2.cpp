@@ -669,7 +669,9 @@ void mouse1(int button, int state, int x, int y)
                 //printf("shadowVal = %d\n", shadowVal);
                 
                 //
-                lightVec.x = lightPos0.x-touchPos.x; lightVec.y = lightPos0.y-touchPos.y; lightVec.z = lightPos0.z-touchPos.z;
+                lightVec.x = lightPos0.x-touchPos.x; 
+                lightVec.y = lightPos0.y-touchPos.y; 
+                lightVec.z = lightPos0.z-touchPos.z;
                 lightVec = vectorNormalize(lightVec);
                 //printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
                 double t = (objPos.z-touchPos.z)/lightVec.z;
@@ -772,67 +774,74 @@ void keyboard(unsigned char key, int x, int y)
 }
 
 //timer0内でLiDARデータを読み込み，影を動かす計算を行い，新しい光源の位置を決める
-void updateLidarInteraction(){
+void updateLidarInteraction() {
+    // 1. 画像が生成される前のクラッシュ防止
+    if (shadowAreaGrayImage.empty()) return;
+
     FILE *fp = fopen("../LIDAR1b/footpoint.txt", "r");
-    if(fp == NULL) return;
+    if (fp == NULL) return;
 
     int tmpNum;
-    double tmpX,tmpZ;
-    if(fscanf(fp,"%d",&tmpNum) == 1 && fscanf(fp, "%lf,%lf", &tmpX, &tmpZ) == 2){
-        //座標変換(cm -> mm)
-        touchPos0.x = -(tmpX * 10.0) ;
+    double tmpX, tmpZ;
+    if (fscanf(fp, "%d", &tmpNum) == 1 && fscanf(fp, "%lf,%lf", &tmpX, &tmpZ) == 2) {
+        // --- 座標変換 (LiDAR -> mm) ---
+        touchPos0.x = -(tmpX * 10.0);
         touchPos0.y = 0.0;
-        touchPos0.z  = (tmpZ * 10.0) - g_areaConfig.scanH/2.0;
+        touchPos0.z = (tmpZ * 10.0) - g_areaConfig.scanH / 2.0;
 
-        printf("touchPos0: (%f, %f, %f)\n", touchPos0.x, touchPos0.y, touchPos0.z);
+        // --- 画面上の座標に変換 (mm -> px) ---
+        int imgX = (int)((touchPos0.x + g_areaConfig.scanW / 2.0) * g_areaConfig.resolution);
+        int imgY = (int)((touchPos0.z + g_areaConfig.scanH / 2.0) * g_areaConfig.resolution);
 
-        //画面上の座標に変換(mm → px)
-        double imgX = (touchPos0.x + g_areaConfig.scanW/2.0)*g_areaConfig.resolution;
-        double imgY = (touchPos0.z + g_areaConfig.scanH/2.0)*g_areaConfig.resolution;
+        // 画像範囲内のチェック
+        if (imgX >= 0 && imgX < shadowAreaGrayImage.cols && imgY >= 0 && imgY < shadowAreaGrayImage.rows) {
+            unsigned char shadowVal0 = shadowAreaGrayImage.at<unsigned char>(imgY, imgX);
 
-        
-        printf("img X: %f, img Y: %f\n",imgX,imgY);
-
-
-
-        if(imgX >= 0 && imgX < shadowAreaGrayImage.cols && imgY >= 0 && imgY < shadowAreaGrayImage.rows){
-
-            unsigned char shadowVal0 = shadowAreaGrayImage.at<unsigned char>(imgY, imgX);//色の確認，触った座標の色
-            printf("shadowVal0: %d\n",shadowVal0);
-            //imshow("shadowAreaGrayImage", shadowAreaGrayImage);
-            if(shadowVal0 == 0){ //影の中にいる場合
-                if(chaseFlg == 0){
-                    //追跡開始
-                    chaseFlg =1;
+            if (shadowVal0 == 0) { // 影の中にいる場合
+                if (chaseFlg == 0) {
+                    // 【Phase A: キャッチした瞬間】
+                    // 現在の「光源」と「手」を結ぶ線が、物体面(objPos.z)のどこを通っているかを計算して固定する
+                    chaseFlg = 1;
                     touchPos = touchPos0;
+
+                    lightVec.x = lightPos0.x - touchPos.x;
+                    lightVec.y = lightPos0.y - touchPos.y;
+                    lightVec.z = lightPos0.z - touchPos.z;
+                    lightVec = vectorNormalize(lightVec);
+
+                    // 物体があるZ平面（objPos.z）との交点を衝突点とする
+                    double t_coll = (objPos.z - touchPos.z) / lightVec.z;
+                    lightCollPos.x = touchPos.x + lightVec.x * t_coll;
+                    lightCollPos.y = touchPos.y + lightVec.y * t_coll;
+                   
                 } else {
-                    double len = sqrt(pow(touchPos.x - touchPos0.x, 2) + pow(touchPos.z - touchPos0.z,2));//距離計算
-                    if(len < g_interaction.dist){//距離が一定値未満の場合
-                        touchPos = touchPos0;//座標更新
+                    // 【Phase B: 追従中】
+                    // 手の移動距離をチェック（ノイズ除去）
+                    double len = sqrt(pow(touchPos.x - touchPos0.x, 2) + pow(touchPos.z - touchPos0.z, 2));
+                    if (len < g_interaction.dist) {
+                        touchPos = touchPos0;
                     }
                 }
 
-                //光源位置の計算
+                // 【光源位置の計算】（共通ロジック）
+                // 「固定された衝突点」から「動く手」に向かうベクトルを計算
                 lightVec.x = lightCollPos.x - touchPos.x;
                 lightVec.y = lightCollPos.y - touchPos.y;
                 lightVec.z = lightCollPos.z - touchPos.z;
                 lightVec = vectorNormalize(lightVec);
 
-                double t = (lightPos0.z-touchPos.z)/lightVec.z;
-                lightPos0.x = touchPos.x+lightVec.x*t;
-                lightPos0.y = touchPos.y+lightVec.y*t;
+                // そのベクトルを光源パネルのZ面まで伸ばす
+                double t_light = (lightPos0.z - touchPos.z) / lightVec.z;
+                lightPos0.x = touchPos.x + lightVec.x * t_light;
+                lightPos0.y = touchPos.y + lightVec.y * t_light;
 
-                printf("光源位置: x = %f, y = %f\n", lightPos0.x, lightPos0.y);
-
-            }else{
-                chaseFlg = 0;//待機
+            } else {
+                // 影から外れたら追従終了
+                chaseFlg = 0;
             }
         }
-
-
     }
     fclose(fp);
-
 }
 
 // timer0内でシリアル通信の送信処理
