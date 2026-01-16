@@ -127,6 +127,9 @@ Vec_3D lightCollPos;  //光線が物体と当たる場所
 Vec_3D footPoint[POINTMAX];
 int footNum;
 
+bool isRedShadow = false;
+bool isGreenShadow = false;
+
 cv::Mat frameImage0, frameImage, frameImage1[LIGHT_NUM], shadowAreaImage, shadowAreaGrayImage;
 
 
@@ -455,6 +458,9 @@ void display0()
                 }
                 else {
                     s1[3] = 255;
+                    //影を白くする
+                    s1[0] = 255; s1[1] = 255; s1[2] = 255;
+
                 }
                 frameImage1[light_id].at<cv::Vec4b>(j, i) = s1;
 
@@ -507,6 +513,8 @@ void display1()
     glTexGendv(GL_R, GL_EYE_PLANE, genfunc[2]);
     glTexGendv(GL_Q, GL_EYE_PLANE, genfunc[3]);
 
+
+
     for (int light_id=0; light_id < LIGHT_NUM; light_id++) {//光源の数分、繰り返す
         //display0の映像視点に基づくテクスチャ座標の自動生成
         glMatrixMode(GL_TEXTURE);  //変換行列の指定（テクスチャ行列）
@@ -526,7 +534,14 @@ void display1()
 
             //影を描画 00
             glDisable(GL_LIGHTING);
-            glColor4d(0.0, 0.0, 0.0, 1.0);
+
+            //影に色を塗る
+            if(light_id == 0){
+            glColor4d(1.0, 0.0, 0.0, 1.0);
+            }else{
+            glColor4d(0.0, 1.0, 0.0, 1.0);
+            }
+
             glPushMatrix();
             glTranslated(0.0, 0.0, 0.0);
             glScaled(1000.0, 1.0, 1000.0);
@@ -537,7 +552,6 @@ void display1()
             glVertex3d(-0.5, 0.0, -0.5);
             glEnd();
             glPopMatrix();
-
 
 
     }
@@ -578,7 +592,7 @@ void display1()
     glReadPixels(0, 0, g_winInfo[1].W * g_appConfig.renderScale, g_winInfo[1].H *g_appConfig.renderScale, GL_BGR, GL_UNSIGNED_BYTE, shadowAreaImage.data);
     cv::flip(shadowAreaImage, shadowAreaImage, 0);
     cv::cvtColor(shadowAreaImage, shadowAreaGrayImage, cv::COLOR_BGR2GRAY);
-    //cv::imshow("shadowAreaImage", shadowAreaGrayImage);
+    cv::imshow("shadowAreaImage", shadowAreaImage);
 }
 
 //ディスプレイコールバック関数  CG2 LEDパネルに表示される
@@ -681,32 +695,68 @@ void mouse1(int button, int state, int x, int y)
             //printf("touchPos = (%f, %f, %f)\n", touchPos.x, touchPos.y, touchPos.z);
 
 
-                if (shadowVal==0 && len<10.0) {  //影を動かす
-                    lightVec.x = lightCollPos.x-touchPos.x;
-                    lightVec.y = lightCollPos.y-touchPos.y;
-                    lightVec.z = lightCollPos.z-touchPos.z;
-                    lightVec = vectorNormalize(lightVec);
+                // タッチ位置の色を取得 (OpenCVはBGR順)
+                int imgX = g_winInfo[wID].mX;
+                int imgY = g_winInfo[wID].mY;
 
-                    double t = (lightPos0[0].z-touchPos.z)/lightVec.z;
-                    lightPos0[0].x = touchPos.x+lightVec.x*t;
-                    lightPos0[0].y = touchPos.y+lightVec.y*t;
+                // 座標範囲チェック
+                if (imgX >= 0 && imgX < shadowAreaImage.cols && imgY >= 0 && imgY < shadowAreaImage.rows) {
+                    cv::Vec3b pixel = shadowAreaImage.at<cv::Vec3b>(imgY, imgX);
+                    // BGR順: pixel[0]=B, pixel[1]=G, pixel[2]=R
+
+                    // 赤色かどうか判定 (R>200 かつ G<100 かつ B<100 くらいを閾値とする)
+                    isRedShadow = (pixel[2] > 200 && pixel[1] < 100 && pixel[0] < 100);
+                    //緑色かどうか判定
+                    isGreenShadow = (pixel[2] < 100 && pixel[1] > 200 && pixel[0] < 100);
+
+
+                    if (isRedShadow && len<1.0) {  // 赤い影を動かす
+                        lightVec.x = lightCollPos.x-touchPos.x;
+                        lightVec.y = lightCollPos.y-touchPos.y;
+                        lightVec.z = lightCollPos.z-touchPos.z;
+                        lightVec = vectorNormalize(lightVec);
+
+                        double t = (lightPos0[0].z-touchPos.z)/lightVec.z;
+                        lightPos0[0].x = touchPos.x+lightVec.x*t;
+                        lightPos0[0].y = touchPos.y+lightVec.y*t;
+                    }else if (isGreenShadow && len<1.0) {
+                        // // 影以外（または別の色の影）をクリックした場合
+
+                        lightVec.x = lightCollPos.x-touchPos.x;
+                        lightVec.y = lightCollPos.y-touchPos.y;
+                        lightVec.z = lightCollPos.z-touchPos.z;
+                        lightVec = vectorNormalize(lightVec);
+
+                        double t = (lightPos0[1].z-touchPos.z)/lightVec.z;
+                        lightPos0[1].x = touchPos.x+lightVec.x*t;
+                        lightPos0[1].y = touchPos.y+lightVec.y*t;
+                    }else {
+                        if (isRedShadow) {
+                        lightVec.x = lightPos0[0].x-touchPos.x;
+                        lightVec.y = lightPos0[0].y-touchPos.y;
+                        lightVec.z = lightPos0[0].z-touchPos.z;
+                        lightVec = vectorNormalize(lightVec);
+                        //printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
+                        double t = (objPos.z-touchPos.z)/lightVec.z;
+                        lightCollPos.x = touchPos.x+lightVec.x*t;
+                        lightCollPos.y = touchPos.y+lightVec.y*t;
+                        }else if (isGreenShadow) {
+                        lightVec.x = lightPos0[1].x-touchPos.x;
+                        lightVec.y = lightPos0[1].y-touchPos.y;
+                        lightVec.z = lightPos0[1].z-touchPos.z;
+                        lightVec = vectorNormalize(lightVec);
+                        //printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
+                        double t = (objPos.z-touchPos.z)/lightVec.z;
+                        lightCollPos.x = touchPos.x+lightVec.x*t;
+                        lightCollPos.y = touchPos.y+lightVec.y*t;
+                        }
+                    }
+
+
+
+
                 }
-                else {
-                    //タッチ位置シャドウ画像画素値
-                    shadowVal = shadowAreaGrayImage.at<unsigned char>(g_winInfo[wID].mY, g_winInfo[wID].mX);
-                    //printf("shadowVal = %d\n", shadowVal);
-
-                    //
-                    lightVec.x = lightPos0[0].x-touchPos.x;
-                    lightVec.y = lightPos0[0].y-touchPos.y;
-                    lightVec.z = lightPos0[0].z-touchPos.z;
-                    lightVec = vectorNormalize(lightVec);
-                    //printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
-                    double t = (objPos.z-touchPos.z)/lightVec.z;
-                    lightCollPos.x = touchPos.x+lightVec.x*t;
-                    lightCollPos.y = touchPos.y+lightVec.y*t;
-                }
-
+                printf("isRedShadow = %d\n", isRedShadow);
         }
     }
 }
@@ -737,7 +787,7 @@ void motion1(int x, int y)
             g_Cam[wID].degY = g_Cam[wID].degY+(g_winInfo[wID].mX-x)*0.5;  //マウス横方向→水平角
             g_Cam[wID].degX = g_Cam[wID].degX+(y-g_winInfo[wID].mY)*0.5;  //マウス縦方向→垂直角
         }
-        else if (g_winInfo[wID].mButton==GLUT_LEFT_BUTTON && shadowVal==0) {
+        else if (g_winInfo[wID].mButton==GLUT_LEFT_BUTTON && isRedShadow ) {
             //タッチ位置
             touchPos.x = (g_winInfo[wID].mX-g_areaConfig.scanW*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
             touchPos.y = 0.0;
@@ -752,6 +802,22 @@ void motion1(int x, int y)
             lightPos0[0].x = touchPos.x+lightVec.x*t;
             lightPos0[0].y = touchPos.y+lightVec.y*t;
             printf("光源位置 %d: x = %f, y = %f\n", 0, lightPos0[0].x, lightPos0[0].y);
+        }
+        else if (g_winInfo[wID].mButton==GLUT_LEFT_BUTTON && isGreenShadow ) {
+            //タッチ位置
+            touchPos.x = (g_winInfo[wID].mX-g_areaConfig.scanW*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
+            touchPos.y = 0.0;
+            touchPos.z = (g_winInfo[wID].mY-g_areaConfig.scanH*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
+
+            lightVec.x = lightCollPos.x-touchPos.x;
+            lightVec.y = lightCollPos.y-touchPos.y;
+            lightVec.z = lightCollPos.z-touchPos.z;
+            lightVec = vectorNormalize(lightVec);
+
+            double t = (lightPos0[1].z-touchPos.z)/lightVec.z;
+            lightPos0[1].x = touchPos.x+lightVec.x*t;
+            lightPos0[1].y = touchPos.y+lightVec.y*t;
+            printf("光源位置 %d: x = %f, y = %f\n", 1, lightPos0[1].x, lightPos0[1].y);
         }
 
 
