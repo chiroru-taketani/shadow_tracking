@@ -88,9 +88,9 @@ struct SerialConfig {
 int chaseFlg = 0;       // LIDARによる追従状態 (0:未検知/待機, 1:追従中)
 unsigned char shadowVal = 255;  //影かどうか（0は影）
 
-struct InteractionConfig{
-    double dist = 30;  //影と手の認識距離（mm）
-} g_interaction;
+
+double hand_dist = 1000;  //手の認識距離精度（mm）
+
 
 struct ObjectConfig{
       double scaleX = 30.0;
@@ -574,6 +574,8 @@ void display2()
     glutSolidSphere(1.0, 36, 18);
     glPopMatrix();
 
+    
+
     glutSwapBuffers();  //描画実行
 }
 
@@ -818,7 +820,7 @@ void updateLidarInteraction() {
                     // 【Phase B: 追従中】
                     // 手の移動距離をチェック（ノイズ除去）
                     double len = sqrt(pow(touchPos.x - touchPos0.x, 2) + pow(touchPos.z - touchPos0.z, 2));
-                    if (len < g_interaction.dist) {
+                    if (len < hand_dist) {
                         touchPos = touchPos0;
                     }
                 }

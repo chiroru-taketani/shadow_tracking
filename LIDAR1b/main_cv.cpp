@@ -41,6 +41,7 @@ std::vector<long> distData;
 //---- スキャン設定 ----
 int scanAngle = 180;         // スキャンする角度の範囲 (正面を0度として±90度)
 double scanAngleStep = 0.35; // URGセンサーの1ステップあたりの角度 (UBG-04LX-F01)
+double objectSize = 50; // 物体の最小面積 (ピクセル)
 // double scanAngleStep = 0.125;  // (UST-20LX-H01の場合)
 double scanAreaW, scanAreaH; // 描画・処理する領域のサイズ(cm) (ファイルから読み込む)
 double scanReso;             // 1画素あたりのサイズ(cm) (ファイルから読み込む)
@@ -155,7 +156,7 @@ void display()
     {
         // スキャン点情報を直交座標(x, y)に変換
         double len = distData[i] * 0.1; // 距離(mm)をcmに変換
-        if(len < 3.0){
+        if(len < 1.0){//距離が近い点は描画しない
             continue;
         }
      
@@ -214,7 +215,7 @@ void display()
     for (int i = 0; i < contours.size(); i++)
     {                                           // 検出された全ての輪郭についてループ
         double area = contourArea(contours[i]); // 輪郭の面積を計算
-        if (area > 500)
+        if (area > objectSize)
         { // 面積が50ピクセルより大きいものだけを物体として認識 (ノイズ除去)
             
             // 輪郭のモーメントを計算して、重心を求める
