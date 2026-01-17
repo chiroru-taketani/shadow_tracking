@@ -281,7 +281,7 @@ void initGL()
         frameImage1[i] = cv::Mat(cv::Size(TEX_SIZE, TEX_SIZE), CV_8UC4);
     }
 
-    //テクスチャオブジェクトの横幅・位置
+    //テクスチャオブジェクトの横幅
     objPos.u = 50.0;
     objPos.x = 0.0;
     objPos.y = objPos.u*objPos.t/objPos.s*0.5;
@@ -290,11 +290,11 @@ void initGL()
     //光源位置
     lightPos0[0].x = 50.0;
     lightPos0[0].y = g_areaConfig.lightH/2.0; //光源の高さmm
-    lightPos0[0].z = g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0; //光源の位置mm
+    lightPos0[0].z = g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0; //光源の位置mm スキャンエリアから10cm離したところ
 
     lightPos0[1].x = -50.0;
     lightPos0[1].y = g_areaConfig.lightH/2.0; //光源の高さmm
-    lightPos0[1].z = g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0; //光源の位置mm
+    lightPos0[1].z = g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0; //光源の位置mm スキャンエリアから10cm離したところ
 
     lightCollPos.z = objPos.z; //光源と物体との衝突位置
 }
@@ -732,23 +732,23 @@ void mouse1(int button, int state, int x, int y)
                         lightPos0[1].y = touchPos.y+lightVec.y*t;
                     }else {
                         if (isRedShadow) {
-                        lightVec.x = lightPos0[0].x-touchPos.x;
-                        lightVec.y = lightPos0[0].y-touchPos.y;
-                        lightVec.z = lightPos0[0].z-touchPos.z;
-                        lightVec = vectorNormalize(lightVec);
-                        //printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
-                        double t = (objPos.z-touchPos.z)/lightVec.z;
-                        lightCollPos.x = touchPos.x+lightVec.x*t;
-                        lightCollPos.y = touchPos.y+lightVec.y*t;
+                            lightVec.x = lightPos0[0].x-touchPos.x;
+                            lightVec.y = lightPos0[0].y-touchPos.y;
+                            lightVec.z = lightPos0[0].z-touchPos.z;
+                            lightVec = vectorNormalize(lightVec);
+                            //printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
+                            double t = (objPos.z-touchPos.z)/lightVec.z;
+                            lightCollPos.x = touchPos.x+lightVec.x*t;
+                            lightCollPos.y = touchPos.y+lightVec.y*t;
                         }else if (isGreenShadow) {
-                        lightVec.x = lightPos0[1].x-touchPos.x;
-                        lightVec.y = lightPos0[1].y-touchPos.y;
-                        lightVec.z = lightPos0[1].z-touchPos.z;
-                        lightVec = vectorNormalize(lightVec);
-                        //printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
-                        double t = (objPos.z-touchPos.z)/lightVec.z;
-                        lightCollPos.x = touchPos.x+lightVec.x*t;
-                        lightCollPos.y = touchPos.y+lightVec.y*t;
+                            lightVec.x = lightPos0[1].x-touchPos.x;
+                            lightVec.y = lightPos0[1].y-touchPos.y;
+                            lightVec.z = lightPos0[1].z-touchPos.z;
+                            lightVec = vectorNormalize(lightVec);
+                            //printf("lightVec = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
+                            double t = (objPos.z-touchPos.z)/lightVec.z;
+                            lightCollPos.x = touchPos.x+lightVec.x*t;
+                            lightCollPos.y = touchPos.y+lightVec.y*t;
                         }
                     }
 
@@ -876,7 +876,7 @@ void keyboard(unsigned char key, int x, int y)
 //timer0内でLiDARデータを読み込み，影を動かす計算を行い，新しい光源の位置を決める
 void updateLidarInteraction() {
     // 1. 画像が生成される前のクラッシュ防止
-    if (shadowAreaGrayImage.empty()) return;
+    if (shadowAreaImage.empty()) return;
 
     FILE *fp = fopen("../LIDAR1b/footpoint.txt", "r");
     if (fp == NULL) return;
@@ -894,10 +894,14 @@ void updateLidarInteraction() {
         int imgY = (int)((touchPos0.z + g_areaConfig.scanH / 2.0) * g_areaConfig.resolution);
 
         // 画像範囲内のチェック
-        if (imgX >= 0 && imgX < shadowAreaGrayImage.cols && imgY >= 0 && imgY < shadowAreaGrayImage.rows) {
-            unsigned char shadowVal0 = shadowAreaGrayImage.at<unsigned char>(imgY, imgX);
+        if (imgX >= 0 && imgX < shadowAreaImage.cols && imgY >= 0 && imgY < shadowAreaImage.rows) {
+            cv::Vec3b pixel = shadowAreaImage.at<cv::Vec3b>(imgY, imgX);
 
-            if (shadowVal0 == 0) { // 影の中にいる場合
+            isRedShadow = (pixel[2] > 200 && pixel[1] < 100 && pixel[0] < 100);
+            //緑色かどうか判定
+            isGreenShadow = (pixel[2] < 100 && pixel[1] > 200 && pixel[0] < 100);
+
+            if (isRedShadow) { // 影の中にいる場合
                 if (chaseFlg == 0) {
                     // 【Phase A: キャッチした瞬間】
                     // 現在の「光源」と「手」を結ぶ線が、物体面(objPos.z)のどこを通っているかを計算して固定する
@@ -935,10 +939,51 @@ void updateLidarInteraction() {
                 lightPos0[0].x = touchPos.x + lightVec.x * t_light;
                 lightPos0[0].y = touchPos.y + lightVec.y * t_light;
 
+            }
+
+            else if (isGreenShadow) { // 影の中にいる場合
+                if (chaseFlg == 0) {
+                    // 【Phase A: キャッチした瞬間】
+                    // 現在の「光源」と「手」を結ぶ線が、物体面(objPos.z)のどこを通っているかを計算して固定する
+                    chaseFlg = 1;
+                    touchPos = touchPos0;
+
+                    lightVec.x = lightPos0[1].x - touchPos.x;
+                    lightVec.y = lightPos0[1].y - touchPos.y;
+                    lightVec.z = lightPos0[1].z - touchPos.z;
+                    lightVec = vectorNormalize(lightVec);
+
+                    // 物体があるZ平面（objPos.z）との交点を衝突点とする
+                    double t_coll = (objPos.z - touchPos.z) / lightVec.z;
+                    lightCollPos.x = touchPos.x + lightVec.x * t_coll;
+                    lightCollPos.y = touchPos.y + lightVec.y * t_coll;
+
+                } else {
+                    // 【Phase B: 追従中】
+                    // 手の移動距離をチェック（ノイズ除去）
+                    double len = sqrt(pow(touchPos.x - touchPos0.x, 2) + pow(touchPos.z - touchPos0.z, 2));
+                    if (len < hand_dist) {
+                        touchPos = touchPos0;
+                    }
+                }
+
+                // 【光源位置の計算】（共通ロジック）
+                // 「固定された衝突点」から「動く手」に向かうベクトルを計算
+                lightVec.x = lightCollPos.x - touchPos.x;
+                lightVec.y = lightCollPos.y - touchPos.y;
+                lightVec.z = lightCollPos.z - touchPos.z;
+                lightVec = vectorNormalize(lightVec);
+
+                // そのベクトルを光源パネルのZ面まで伸ばす
+                double t_light = (lightPos0[1].z - touchPos.z) / lightVec.z;
+                lightPos0[1].x = touchPos.x + lightVec.x * t_light;
+                lightPos0[1].y = touchPos.y + lightVec.y * t_light;
+
             } else {
                 // 影から外れたら追従終了
                 chaseFlg = 0;
             }
+            printf("isRedShadow = %d\n", isRedShadow);
         }
     }
     fclose(fp);
