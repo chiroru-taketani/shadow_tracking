@@ -41,7 +41,7 @@ std::vector<long> distData;
 //---- スキャン設定 ----
 int scanAngle = 180;         // スキャンする角度の範囲 (正面を0度として±90度)
 double scanAngleStep = 0.35; // URGセンサーの1ステップあたりの角度 (UBG-04LX-F01)
-double objectSize = 50; // 物体の最小面積 (ピクセル)
+double objectSize = 200; // 物体の最小面積 (ピクセル)
 // double scanAngleStep = 0.125;  // (UST-20LX-H01の場合)
 double scanAreaW, scanAreaH; // 描画・処理する領域のサイズ(cm) (ファイルから読み込む)
 double scanReso;             // 1画素あたりのサイズ(cm) (ファイルから読み込む)
@@ -98,8 +98,8 @@ void initGL()
     // 読み込んだ情報に基づき、OpenCVで使う画像領域をメモリ上に確保
     scanImage = cv::Mat(cv::Size(scanAreaW / scanReso, scanAreaH / scanReso), CV_8UC3); // カラー画像用
     binImage = cv::Mat(cv::Size(scanAreaW / scanReso, scanAreaH / scanReso), CV_8UC1);  // 白黒(2値)画像用
-    
-    
+
+
     //---- GLUTウィンドウの生成 ----
     glutInitWindowSize(scanAreaW / scanReso, scanAreaH / scanReso); // ウィンドウサイズ指定
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH | GLUT_DOUBLE);      // ディスプレイモード設定(RGBA色, Zバッファ, ダブルバッファ)
@@ -141,7 +141,7 @@ void initGL()
 void display()
 {
     //---- [1] LiDARデータをOpenGLで描画 ----
-   
+
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // 画面(カラーバッファとデプスバッファ)をクリア
     glLoadIdentity();                                   // 座標変換行列を初期化
@@ -156,10 +156,10 @@ void display()
     {
         // スキャン点情報を直交座標(x, y)に変換
         double len = distData[i] * 0.1; // 距離(mm)をcmに変換
-        if(len < 1.0){//距離が近い点は描画しない
+        if(len < 10.0){//距離が近い点は描画しない
             continue;
         }
-     
+
         double rad = urg.index2rad(i);  // i番目のスキャン点の角度(ラジアン)を取得
         double x = -len * sin(rad);     // i番目のスキャン点のx座標 (センサー座標系→OpenGL座標系)
         // if(x < -2.0){
@@ -217,7 +217,7 @@ void display()
         double area = contourArea(contours[i]); // 輪郭の面積を計算
         if (area > objectSize)
         { // 面積が50ピクセルより大きいものだけを物体として認識 (ノイズ除去)
-            
+
             // 輪郭のモーメントを計算して、重心を求める
             cv::Moments m = cv::moments(contours[i]);
             cv::Point p = cv::Point(m.m10 / m.m00, m.m01 / m.m00); // 重心のピクセル座標(x, y)

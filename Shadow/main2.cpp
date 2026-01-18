@@ -66,15 +66,20 @@ struct AppConfig {
 
 // --- 空間・エリアの設定 ---
 struct AreaConfig {
-    double scanW = 400.0; // スキャンエリアの横幅 (mm)
-    double scanH = 200.0; // スキャンエリアの縦幅 (mm)
-    double aspectRate = 1.0 / 2.0; // LEDパネルのアスペクト比 (縦/横)
-    double lightW = 256.0;  // LEDパネルの横幅
-    double lightH = 128.0; // LEDパネルの縦幅 (lightW * aspectRate)
-    double resolution = 2.0; // 1mmあたりのピクセル数．CG1のサイズが変化（画像処理の精度に影響）
+    double scanW = 500.0; // スキャンエリアの横幅 (mm)
+    double scanH = 300.0; // スキャンエリアの縦幅 (mm)
+    double aspectRate = 9.0 / 16.0; // LEDパネルのアスペクト比 (縦/横)
+    double lightW = 1800.0;  // LEDパネルの横幅(mm)
+    double lightH = 1200.0; // LEDパネルの縦幅 (lightW * aspectRate)
+    double resolution = 2.34375; // 1mmあたりのピクセル数．CG1のサイズが変化（画像処理の精度に影響）
 
-    double LEDW = 64.0; // LEDパネルの横幅
-    double LEDH = 32.0; // LEDパネルの縦幅
+    // //表示させるディスプレイの解像度
+    // double displayW = 1920.0; //ディスプレイの横幅
+    // double displayH = 1080.0; //ディスプレイの縦幅
+
+    //LEDシリアル通信用の解像度
+    double LEDW = 64.0; // LEDパネルの横ピクセル
+    double LEDH = 32.0; // LEDパネルの縦ピクセル
 } g_areaConfig;
 
 
@@ -86,10 +91,10 @@ struct SerialConfig {
 } g_Serial;
 
 int chaseFlg = 0;       // LIDARによる追従状態 (0:未検知/待機, 1:追従中)
-unsigned char shadowVal = 255;  //影かどうか（0は影）
+//unsigned char shadowVal = 255;  //影かどうか（0は影）
 
 
-double hand_dist = 1000;  //手の認識距離精度（mm）
+double hand_dist = 5;  //手の認識距離精度（mm）
 
 
 struct ObjectConfig{
@@ -119,7 +124,11 @@ struct Camera {
 
 Vec_3D objPos;  //影物体
 #define LIGHT_NUM 2
-Vec_3D lightPos0[LIGHT_NUM];
+//光源の位置 LEDパネルの位置
+Vec_3D lightPos0[LIGHT_NUM] = {
+    {300.0, g_areaConfig.lightH/2.0, g_areaConfig.scanH/2.0 + 440.0},
+    {-300.0, g_areaConfig.lightH/2.0, g_areaConfig.scanH/2.0 + 440.0}
+};
 Vec_3D touchPos, touchPos0;  //手を触れた場所
 
 Vec_3D lightVec;  //光線ベクトル
@@ -208,7 +217,7 @@ void initGL()
 
     //描画ウィンドウ生成1（影エリア映像の生成）
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH | GLUT_DOUBLE);  //ディスプレイモードの指定
-    glutInitWindowSize(g_areaConfig.scanW * g_areaConfig.resolution,  g_areaConfig.scanH * g_areaConfig.resolution);  //ウィンドウサイズの指定
+    glutInitWindowSize(g_areaConfig.scanW * g_areaConfig.resolution + 20,  g_areaConfig.scanH * g_areaConfig.resolution + 20);  //ウィンドウサイズの指定スキャンエリアよりもちょっと大きく
     glutInitWindowPosition(512, 0);  //ウィンドウ位置の指定
     g_winInfo[1].id = glutCreateWindow("CG1");  //ウィンドウの生成
     //コールバック関数の指定
@@ -230,7 +239,7 @@ void initGL()
 
     //描画ウィンドウ生成2（照明用映像の生成）
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH | GLUT_DOUBLE);  //ディスプレイモードの指定
-    glutInitWindowSize(800, 800*g_areaConfig.aspectRate);  //ウィンドウサイズの指定
+    glutInitWindowSize(g_areaConfig.lightW / g_areaConfig.resolution, g_areaConfig.lightH / g_areaConfig.resolution);  //ウィンドウサイズの指定
     glutInitWindowPosition(512, g_areaConfig.scanH*g_areaConfig.resolution+100);  //ウィンドウ位置の指定
     g_winInfo[2].id = glutCreateWindow("CG2");  //ウィンドウの生成
     //コールバック関数の指定
@@ -253,7 +262,7 @@ void initGL()
 
         //テクスチャ
         //テクスチャオブジェクト生成(#100)
-        textureImage = cv::imread("Obj_01.png", cv::IMREAD_UNCHANGED);
+        textureImage = cv::imread("Obj_02.png", cv::IMREAD_UNCHANGED);
         objPos.s = textureImage.cols; objPos.t = textureImage.rows;
         objPos.id = 100;
         glBindTexture(GL_TEXTURE_2D, objPos.id);  //テクスチャオブジェクト生成
@@ -282,19 +291,19 @@ void initGL()
     }
 
     //テクスチャオブジェクトの横幅
-    objPos.u = 50.0;
+    objPos.u = 130.0;
     objPos.x = 0.0;
     objPos.y = objPos.u*objPos.t/objPos.s*0.5;
     objPos.z = g_areaConfig.scanH/2.0 + g_object.scaleZ/2.0;  //位置mm
 
     //光源位置
-    lightPos0[0].x = 50.0;
-    lightPos0[0].y = g_areaConfig.lightH/2.0; //光源の高さmm
-    lightPos0[0].z = g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0; //光源の位置mm スキャンエリアから10cm離したところ
+    // lightPos0[0].x = 50.0;
+    // lightPos0[0].y = g_areaConfig.lightH/2.0; //光源の高さmm
+    // lightPos0[0].z = g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0; //光源の位置mm スキャンエリアから10cm離したところ
 
-    lightPos0[1].x = -50.0;
-    lightPos0[1].y = g_areaConfig.lightH/2.0; //光源の高さmm
-    lightPos0[1].z = g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0; //光源の位置mm スキャンエリアから10cm離したところ
+    // lightPos0[1].x = -50.0;
+    // lightPos0[1].y = g_areaConfig.lightH/2.0; //光源の高さmm
+    // lightPos0[1].z = g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0; //光源の位置mm スキャンエリアから10cm離したところ
 
     lightCollPos.z = objPos.z; //光源と物体との衝突位置
 }
@@ -468,7 +477,7 @@ void display0()
         }
 
         char winName[64];
-        // sprintf(winName, "frame%d", light_id);
+        sprintf(winName, "frame%d", light_id);
         cv::imshow(winName, frameImage1[light_id]);
     }
 
@@ -592,7 +601,7 @@ void display1()
     glReadPixels(0, 0, g_winInfo[1].W * g_appConfig.renderScale, g_winInfo[1].H *g_appConfig.renderScale, GL_BGR, GL_UNSIGNED_BYTE, shadowAreaImage.data);
     cv::flip(shadowAreaImage, shadowAreaImage, 0);
     cv::cvtColor(shadowAreaImage, shadowAreaGrayImage, cv::COLOR_BGR2GRAY);
-    cv::imshow("shadowAreaImage", shadowAreaImage);
+    //cv::imshow("shadowAreaImage", shadowAreaImage);
 }
 
 //ディスプレイコールバック関数  CG2 LEDパネルに表示される
@@ -609,7 +618,7 @@ void display2()
         glColor4d(1.0, 2*lightPos0[i].y/g_areaConfig.lightH, 2*lightPos0[i].y/g_areaConfig.lightH, 1.0);
         glPushMatrix();
         glTranslated(-lightPos0[i].x, lightPos0[i].y, 0.0);
-        glScaled(11.0, 11.0, 1.0);
+        glScaled(20.0, 20.0, 1.0);
         glutSolidSphere(1.0, 36, 18);
         glPopMatrix();
     }
@@ -843,13 +852,13 @@ void keyboard(unsigned char key, int x, int y)
 
         case 't':
 
-         lightPos0[0].x = 20.0;
+         lightPos0[0].x = 300.0;
          lightPos0[0].y = g_areaConfig.lightH/2.0;
-         lightPos0[0].z =  g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0;
+         lightPos0[0].z = g_areaConfig.scanH/2.0 + 440.0;
 
-         lightPos0[1].x = -20.0;
+         lightPos0[1].x = -300.0;
          lightPos0[1].y = g_areaConfig.lightH/2.0;
-         lightPos0[1].z =  g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0;
+         lightPos0[1].z = g_areaConfig.scanH/2.0 + 440.0;
             break;
 
         case '1'://立方体
