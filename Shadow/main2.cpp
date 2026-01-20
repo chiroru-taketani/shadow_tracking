@@ -71,7 +71,7 @@ struct AreaConfig {
     double aspectRate = 9.0 / 16.0; // LEDパネルのアスペクト比 (縦/横)
     double lightW = 1800.0;  // LEDパネルの横幅(mm)
     double lightH = 1200.0; // LEDパネルの縦幅 (lightW * aspectRate)
-    double resolution = 2.34375; // 1mmあたりのピクセル数．CG1のサイズが変化（画像処理の精度に影響）
+    double resolution = 2.0; // 1mmあたりのピクセル数．CG1のサイズが変化（画像処理の精度に影響）
 
     // //表示させるディスプレイの解像度
     // double displayW = 1920.0; //ディスプレイの横幅
@@ -295,15 +295,6 @@ void initGL()
     objPos.x = 0.0;
     objPos.y = objPos.u*objPos.t/objPos.s*0.5;
     objPos.z = g_areaConfig.scanH/2.0 + g_object.scaleZ/2.0;  //位置mm
-
-    //光源位置
-    // lightPos0[0].x = 50.0;
-    // lightPos0[0].y = g_areaConfig.lightH/2.0; //光源の高さmm
-    // lightPos0[0].z = g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0; //光源の位置mm スキャンエリアから10cm離したところ
-
-    // lightPos0[1].x = -50.0;
-    // lightPos0[1].y = g_areaConfig.lightH/2.0; //光源の高さmm
-    // lightPos0[1].z = g_areaConfig.scanH/2.0 + g_object.scaleZ + 100.0; //光源の位置mm スキャンエリアから10cm離したところ
 
     lightCollPos.z = objPos.z; //光源と物体との衝突位置
 }
@@ -810,7 +801,7 @@ void motion1(int x, int y)
             double t = (lightPos0[0].z-touchPos.z)/lightVec.z;
             lightPos0[0].x = touchPos.x+lightVec.x*t;
             lightPos0[0].y = touchPos.y+lightVec.y*t;
-            printf("光源位置 %d: x = %f, y = %f\n", 0, lightPos0[0].x, lightPos0[0].y);
+            //printf("光源位置 %d: x = %f, y = %f\n", 0, lightPos0[0].x, lightPos0[0].y);
         }
         else if (g_winInfo[wID].mButton==GLUT_LEFT_BUTTON && isGreenShadow ) {
             //タッチ位置
@@ -826,7 +817,7 @@ void motion1(int x, int y)
             double t = (lightPos0[1].z-touchPos.z)/lightVec.z;
             lightPos0[1].x = touchPos.x+lightVec.x*t;
             lightPos0[1].y = touchPos.y+lightVec.y*t;
-            printf("光源位置 %d: x = %f, y = %f\n", 1, lightPos0[1].x, lightPos0[1].y);
+            //printf("光源位置 %d: x = %f, y = %f\n", 1, lightPos0[1].x, lightPos0[1].y);
         }
 
 
