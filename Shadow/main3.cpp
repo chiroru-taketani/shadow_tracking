@@ -443,7 +443,7 @@ void display0()
 
         //描画したシーンを画像としてframeImageに格納
         glReadPixels(0, 0, g_winInfo[0].W * g_appConfig.renderScale, g_winInfo[0].H * g_appConfig.renderScale, GL_BGR, GL_UNSIGNED_BYTE, frameImage0.data);
-        cv::resize(frameImage0, frameImage, frameImage.size());
+        cv::resize(frameImage0, frameImage, frameImage0.size());
         cv::flip(frameImage, frameImage, 0);
 
         //frameImageのグリーンバックを透過させる
@@ -452,7 +452,7 @@ void display0()
                 cv::Vec3b s;
                 cv::Vec4b s1;
 
-                s = frameImage.at<cv::Vec3b>(j, i);
+                s = frameImage0.at<cv::Vec3b>(j, i);
                 s1[0] = s[0]; s1[1] = s[1]; s1[2] = s[2];
                 if (s[0]<1 && s[1]>254 && s[2]<1) {
                     s1[3] = 0;
@@ -536,11 +536,15 @@ void display1()
             //影を描画 00
             glDisable(GL_LIGHTING);
 
-            //影に色を塗る
+            //ブレンディングを有効化（半透明化）
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            //影に色を塗る（アルファ値を0.5に設定して半透明に）
             if(light_id == 0){
-            glColor4d(1.0, 0.0, 0.0, 1.0);
+            glColor4d(1.0, 0.0, 0.0, 0.5);  // 赤い影を50%透明に
             }else{
-            glColor4d(0.0, 1.0, 0.0, 1.0);
+            glColor4d(0.0, 1.0, 0.0, 0.5);  // 緑の影を50%透明に
             }
 
             glPushMatrix();
@@ -553,6 +557,9 @@ void display1()
             glVertex3d(-0.5, 0.0, -0.5);
             glEnd();
             glPopMatrix();
+
+            //ブレンディングを無効化
+            glDisable(GL_BLEND);
 
 
     }
@@ -919,7 +926,6 @@ void LidarInteraction() {
                     lightCollPos.x = touchPos.x + lightVec.x * t_coll;
                     lightCollPos.y = touchPos.y + lightVec.y * t_coll;
 
-                     printf("isRedShadow = %d\n", isRedShadow);
                     }else if(chaseFlg[0] == 1){
                         // 【Phase B: 追従中】
                         // 手の移動距離をチェック（ノイズ除去）
@@ -955,6 +961,7 @@ void LidarInteraction() {
                     double t_coll = (objPos.z - touchPos.z) / lightVec.z;
                     lightCollPos.x = touchPos.x + lightVec.x * t_coll;
                     lightCollPos.y = touchPos.y + lightVec.y * t_coll;
+
                     }else if(chaseFlg[1] == 1){
                         // 【Phase B: 追従中】
                         // 手の移動距離をチェック（ノイズ除去）
@@ -963,6 +970,11 @@ void LidarInteraction() {
                             touchPos = touchPos0;
                         }
                     }
+
+                    lightVec.x = lightCollPos.x - touchPos.x;
+                    lightVec.y = lightCollPos.y - touchPos.y;
+                    lightVec.z = lightCollPos.z - touchPos.z;
+                    lightVec = vectorNormalize(lightVec);
 
                     //光源の位置を更新
                     // そのベクトルを光源パネルのZ面まで伸ばす
