@@ -1,4 +1,4 @@
-//g++ -O3 -std=c++11 main2.cpp -framework OpenGL -framework GLUT `pkg-config --cflags --libs opencv4` -Wno-deprecated
+//g++ -O3 -std=c++11 main3.cpp -framework OpenGL -framework GLUT `pkg-config --cflags --libs opencv4` -Wno-deprecated
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -90,13 +90,13 @@ struct SerialConfig {
     const int baud = 115200;    // 通信速度 (bps)
 } g_Serial;
 
-int chaseFlg = 0;       // LIDARによる追従状態 (0:未検知/待機, 1:追従中)
+
 //unsigned char shadowVal = 255;  //影かどうか（0は影）
 
 
-double hand_dist = 5;  //手の認識距離精度（mm）
+double hand_dist = 100;  //手の認識距離精度（mm）
 
-
+//物体の情報
 struct ObjectConfig{
       double scaleX = 30.0;
       double scaleY = 30.0;
@@ -124,6 +124,7 @@ struct Camera {
 
 Vec_3D objPos;  //影物体
 #define LIGHT_NUM 2
+int chaseFlg[LIGHT_NUM] = {0};       // LIDARによる追従状態 (0:未検知/待機, 1:追従中)
 //光源の位置 LEDパネルの位置
 Vec_3D lightPos0[LIGHT_NUM] = {
     {300.0, g_areaConfig.lightH/2.0, g_areaConfig.scanH/2.0 + 440.0},
@@ -874,7 +875,7 @@ void keyboard(unsigned char key, int x, int y)
 }
 
 //timer0内でLiDARデータを読み込み，影を動かす計算を行い，新しい光源の位置を決める
-void updateLidarInteraction() {
+void LidarInteraction() {
     // 1. 画像が生成される前のクラッシュ防止
     if (shadowAreaImage.empty()) return;
 
@@ -883,6 +884,8 @@ void updateLidarInteraction() {
 
     int tmpNum;
     double tmpX, tmpZ;
+
+
     if (fscanf(fp, "%d", &tmpNum) == 1 && fscanf(fp, "%lf,%lf", &tmpX, &tmpZ) == 2) {
         // --- 座標変換 (LiDAR -> mm) ---
         touchPos0.x = -(tmpX * 10.0);
@@ -901,13 +904,11 @@ void updateLidarInteraction() {
             //緑色かどうか判定
             isGreenShadow = (pixel[2] < 100 && pixel[1] > 200 && pixel[0] < 100);
 
-            if (isRedShadow) { // 影の中にいる場合
-                if (chaseFlg == 0) {
-                    // 【Phase A: キャッチした瞬間】
-                    // 現在の「光源」と「手」を結ぶ線が、物体面(objPos.z)のどこを通っているかを計算して固定する
-                    chaseFlg = 1;
+            if(isRedShadow || isGreenShadow) {//どちらかの影内ならば
+                if(isRedShadow){
+                    if (chaseFlg[0] == 0) {
+                    chaseFlg[0] = 1;
                     touchPos = touchPos0;
-
                     lightVec.x = lightPos0[0].x - touchPos.x;
                     lightVec.y = lightPos0[0].y - touchPos.y;
                     lightVec.z = lightPos0[0].z - touchPos.z;
@@ -918,36 +919,33 @@ void updateLidarInteraction() {
                     lightCollPos.x = touchPos.x + lightVec.x * t_coll;
                     lightCollPos.y = touchPos.y + lightVec.y * t_coll;
 
-                } else {
-                    // 【Phase B: 追従中】
-                    // 手の移動距離をチェック（ノイズ除去）
-                    double len = sqrt(pow(touchPos.x - touchPos0.x, 2) + pow(touchPos.z - touchPos0.z, 2));
-                    if (len < hand_dist) {
-                        touchPos = touchPos0;
+                     printf("isRedShadow = %d\n", isRedShadow);
+                    }else if(chaseFlg[0] == 1){
+                        // 【Phase B: 追従中】
+                        // 手の移動距離をチェック（ノイズ除去）
+                        double len = sqrt(pow(touchPos.x - touchPos0.x, 2) + pow(touchPos.z - touchPos0.z, 2));
+                        if (len < hand_dist) {
+                            touchPos = touchPos0;
+                        }
                     }
+
+                    lightVec.x = lightCollPos.x - touchPos.x;
+                    lightVec.y = lightCollPos.y - touchPos.y;
+                    lightVec.z = lightCollPos.z - touchPos.z;
+                    lightVec = vectorNormalize(lightVec);
+
+                    //光源の位置を更新
+                    // そのベクトルを光源パネルのZ面まで伸ばす
+                    double t_light = (lightPos0[0].z - touchPos.z) / lightVec.z;
+                    lightPos0[0].x = touchPos.x + lightVec.x * t_light;
+                    lightPos0[0].y = touchPos.y + lightVec.y * t_light;
+
                 }
 
-                // 【光源位置の計算】（共通ロジック）
-                // 「固定された衝突点」から「動く手」に向かうベクトルを計算
-                lightVec.x = lightCollPos.x - touchPos.x;
-                lightVec.y = lightCollPos.y - touchPos.y;
-                lightVec.z = lightCollPos.z - touchPos.z;
-                lightVec = vectorNormalize(lightVec);
-
-                // そのベクトルを光源パネルのZ面まで伸ばす
-                double t_light = (lightPos0[0].z - touchPos.z) / lightVec.z;
-                lightPos0[0].x = touchPos.x + lightVec.x * t_light;
-                lightPos0[0].y = touchPos.y + lightVec.y * t_light;
-
-            }
-
-            else if (isGreenShadow) { // 影の中にいる場合
-                if (chaseFlg == 0) {
-                    // 【Phase A: キャッチした瞬間】
-                    // 現在の「光源」と「手」を結ぶ線が、物体面(objPos.z)のどこを通っているかを計算して固定する
-                    chaseFlg = 1;
+                if(isGreenShadow){
+                    if (chaseFlg[1] == 0) {
+                    chaseFlg[1] = 1;
                     touchPos = touchPos0;
-
                     lightVec.x = lightPos0[1].x - touchPos.x;
                     lightVec.y = lightPos0[1].y - touchPos.y;
                     lightVec.z = lightPos0[1].z - touchPos.z;
@@ -957,33 +955,38 @@ void updateLidarInteraction() {
                     double t_coll = (objPos.z - touchPos.z) / lightVec.z;
                     lightCollPos.x = touchPos.x + lightVec.x * t_coll;
                     lightCollPos.y = touchPos.y + lightVec.y * t_coll;
-
-                } else {
-                    // 【Phase B: 追従中】
-                    // 手の移動距離をチェック（ノイズ除去）
-                    double len = sqrt(pow(touchPos.x - touchPos0.x, 2) + pow(touchPos.z - touchPos0.z, 2));
-                    if (len < hand_dist) {
-                        touchPos = touchPos0;
+                    }else if(chaseFlg[1] == 1){
+                        // 【Phase B: 追従中】
+                        // 手の移動距離をチェック（ノイズ除去）
+                        double len = sqrt(pow(touchPos.x - touchPos0.x, 2) + pow(touchPos.z - touchPos0.z, 2));
+                        if (len < hand_dist) {
+                            touchPos = touchPos0;
+                        }
                     }
+
+                    //光源の位置を更新
+                    // そのベクトルを光源パネルのZ面まで伸ばす
+                    double t_light = (lightPos0[1].z - touchPos.z) / lightVec.z;
+                    lightPos0[1].x = touchPos.x + lightVec.x * t_light;
+                    lightPos0[1].y = touchPos.y + lightVec.y * t_light;
+
                 }
 
-                // 【光源位置の計算】（共通ロジック）
-                // 「固定された衝突点」から「動く手」に向かうベクトルを計算
-                lightVec.x = lightCollPos.x - touchPos.x;
-                lightVec.y = lightCollPos.y - touchPos.y;
-                lightVec.z = lightCollPos.z - touchPos.z;
-                lightVec = vectorNormalize(lightVec);
 
-                // そのベクトルを光源パネルのZ面まで伸ばす
-                double t_light = (lightPos0[1].z - touchPos.z) / lightVec.z;
-                lightPos0[1].x = touchPos.x + lightVec.x * t_light;
-                lightPos0[1].y = touchPos.y + lightVec.y * t_light;
 
-            } else {
-                // 影から外れたら追従終了
-                chaseFlg = 0;
+
+
+
+            }
+            else {
+                //影から外れた場合
+                chaseFlg[0] = 0;
+                chaseFlg[1] = 0;
             }
         }
+
+
+
     }
     fclose(fp);
 }
@@ -1014,7 +1017,7 @@ void timer0(int value)
     }
 
     // 2. LIDARデータの処理と影の追従
-    updateLidarInteraction();
+    LidarInteraction();
 
     // 3. シリアル通信で光源位置を送信
     sendLightPosToSerial();
@@ -1041,7 +1044,7 @@ Vec_3D vectorNormalize(Vec_3D vec)
     Vec_3D out;
     double length;
 
-    //ベクトル長
+    //ベクトルの長さを求める処理
     length = sqrt(vec.x*vec.x+vec.y*vec.y+vec.z*vec.z);
     //正規化
     out.x = vec.x/length;
