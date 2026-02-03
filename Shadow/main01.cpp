@@ -66,11 +66,11 @@ struct AppConfig {
 
 // --- 空間・エリアの設定 ---
 struct AreaConfig {
-    double scanW = 500.0; // スキャンエリアの横幅 (mm)
-    double scanH = 300.0; // スキャンエリアの縦幅 (mm)
-    double aspectRate = 9.0 / 16.0; // LEDパネルのアスペクト比 (縦/横)
-    double lightW = 1800.0;  // LEDパネルの横幅
-    double lightH = 1200.0; // LEDパネルの縦幅 (lightW * aspectRate)
+    double scanW = 400.0; // スキャンエリアの横幅 (mm)
+    double scanH = 200.0; // スキャンエリアの縦幅 (mm)
+    double aspectRate = 1.0 / 2.0; // LEDパネルのアスペクト比 (縦/横)
+    double lightW = 256.0;  // LEDパネルの横幅
+    double lightH = 128.0; // LEDパネルの縦幅 (lightW * aspectRate)
     double resolution = 2.0; // 1mmあたりのピクセル数．CG1のサイズが変化（画像処理の精度に影響）
 
     double LEDW = 64.0; // LEDパネルの横幅
