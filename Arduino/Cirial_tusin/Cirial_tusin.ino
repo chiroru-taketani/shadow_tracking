@@ -60,9 +60,15 @@ void drawCircle(int16_t x, int16_t y) {
 
 
   float color_ratio = current_y / (float)(RES_Y - 1);
+  //高さによって色を変える場合
+  // r_val = 255;
+  // g_val = (uint8_t)(255 * color_ratio);
+  // b_val = (uint8_t)(255 * color_ratio);
+
+  //色を変えない
   r_val = 255;
-  g_val = (uint8_t)(255 * color_ratio);
-  b_val = (uint8_t)(255 * color_ratio);
+  g_val = 255;
+  b_val = 255;
 
   // 2. 指定された座標(x, y)に円を描画します。
   dma_display->fillCircle(x, y, circle_radius, dma_display->color565(r_val, g_val, b_val));

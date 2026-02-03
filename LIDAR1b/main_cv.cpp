@@ -41,12 +41,19 @@ std::vector<long> distData;
 //---- スキャン設定 ----
 int scanAngle = 180;         // スキャンする角度の範囲 (正面を0度として±90度)
 double scanAngleStep = 0.35; // URGセンサーの1ステップあたりの角度 (UBG-04LX-F01)
-double objectSize = 300; // 物体の最小面積 (ピクセル)
+double objectSize = 200; // 物体の最小面積 (ピクセル)
 // double scanAngleStep = 0.125;  // (UST-20LX-H01の場合)
 double scanAreaW, scanAreaH; // 描画・処理する領域のサイズ(cm) (ファイルから読み込む)
 double scanReso;             // 1画素あたりのサイズ(cm) (ファイルから読み込む)
 cv::Mat scanImage, binImage; // OpenCVで画像処理を行うための画像データ格納用
 cv::Mat element;             // モルフォロジー処理(膨張・収縮)で使用する構造要素
+
+//ノイズ除去のスムージング用関数
+Vec_3D tmpPoint = {0, 0, 0};// 一時保存用座標
+bool isFirst = true; // 初回フラグ
+double smoothFactor = 1.0; // 0.0~1.0 (大きいほど滑らかになるが遅延が発生)
+double moveThreshold = 0.3;//最小移動距離の閾値
+
 
 
 //---- ファイル関連 ----
@@ -93,8 +100,13 @@ void initGL()
 {
     // scanarea.txtファイルを開き、スキャン領域の幅・高さ・解像度を読み込む
     fp = fopen(areaSizeFile, "r");
-    fscanf(fp, "%lf,%lf,%lf", &scanAreaW, &scanAreaH, &scanReso);
-    fclose(fp);
+    if(fp == NULL){
+        printf("scanarea.txtファイルが開けません\n");
+    }else{
+        fscanf(fp, "%lf,%lf,%lf", &scanAreaW, &scanAreaH, &scanReso);
+        fclose(fp);
+    }
+
     // 読み込んだ情報に基づき、OpenCVで使う画像領域をメモリ上に確保
     scanImage = cv::Mat(cv::Size(scanAreaW / scanReso, scanAreaH / scanReso), CV_8UC3); // カラー画像用
     binImage = cv::Mat(cv::Size(scanAreaW / scanReso, scanAreaH / scanReso), CV_8UC1);  // 白黒(2値)画像用
@@ -123,12 +135,14 @@ void initGL()
     //---- テクスチャの読み込み ----
     // スキャン点を描画するための画像(mark.png)を読み込む
     cv::Mat textureImage = cv::imread("mark.png", cv::IMREAD_UNCHANGED);
-    glBindTexture(GL_TEXTURE_2D, 0); // テクスチャID 0番を有効化
-    // テクスチャの拡大・縮小時のフィルタリング方法を設定(ニアレストネイバー)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    // 読み込んだ画像をテクスチャとしてVRAMに転送
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureImage.cols, textureImage.rows, 0, GL_BGRA, GL_UNSIGNED_BYTE, textureImage.data);
+    if (!textureImage.empty()) {
+        glBindTexture(GL_TEXTURE_2D, 0); // テクスチャID 0番を有効化
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureImage.cols, textureImage.rows, 0, GL_BGRA, GL_UNSIGNED_BYTE, textureImage.data);
+    } else {
+        printf("mark.png not found!\n");
+    }
 
     // モルフォロジー処理で使用する構造要素(5x5の楕円形)を作成
     element = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
@@ -203,8 +217,8 @@ void display()
     // // モルフォロジー処理でノイズ除去と領域の結合を行う
     cv::dilate(binImage, binImage, element, cv::Point(-1, -1), 2); // 2回膨張させて、スキャン点間の隙間を埋める
     cv::erode(binImage, binImage, element, cv::Point(-1, -1), 2);  // 2回収縮させて、膨張した領域を元に戻しつつ、ノイズを除去
-    cv::dilate(binImage, binImage, element, cv::Point(-1,-1), 5); // 必要なら再度膨張
-    cv::erode(binImage, binImage, element, cv::Point(-1, -1), 2);  // 2回収縮させて、膨張した領域を元に戻しつつ、ノイズを除去
+    // cv::dilate(binImage, binImage, element, cv::Point(-1,-1), 5); // 必要なら再度膨張
+    // cv::erode(binImage, binImage, element, cv::Point(-1, -1), 2);  // 2回収縮させて、膨張した領域を元に戻しつつ、ノイズを除去
 
     //---- [3] 輪郭検出と重心計算 ----
     std::vector<std::vector<cv::Point>> contours; // 検出された輪郭の情報を格納するベクター
@@ -221,12 +235,34 @@ void display()
             // 輪郭のモーメントを計算して、重心を求める
             cv::Moments m = cv::moments(contours[i]);
             cv::Point p = cv::Point(m.m10 / m.m00, m.m01 / m.m00); // 重心のピクセル座標(x, y)
-            // 確認のため、処理結果画像(scanImage)の重心位置に赤い円を描画
-            cv::circle(scanImage, cv::Point(p.x, p.y), 5, cv::Scalar(0, 0, 255), -1);
+
 
             // 画面上の2Dピクセル座標を、OpenGLの世界座標(cm)に逆変換する
             Vec_3D pointF;
             gluUnProject(p.x, binImage.rows - p.y, 0, model, proj, view, &pointF.x, &pointF.y, &pointF.z);
+
+            //スムージング処理
+            if(isFirst){
+                //初期値はそのまま
+                tmpPoint = pointF;
+                isFirst = false;
+            }else{
+                //2回目以降
+                double dist  = sqrt(pow(pointF.x - tmpPoint.x, 2) + pow(pointF.y - tmpPoint.y, 2));
+                if(dist < moveThreshold){
+                    //動きが閾値よりも小さい場合
+                    pointF = tmpPoint;
+                }else{
+                    // 新しい座標 = (現在の座標 * 係数) + (前回の座標 * (1 - 係数))
+                    pointF.x = pointF.x * smoothFactor + tmpPoint.x * (1.0 - smoothFactor);
+                    pointF.y = pointF.y * smoothFactor + tmpPoint.y * (1.0 - smoothFactor);
+                    tmpPoint = pointF;
+                }
+
+            }
+
+            // 確認のため、処理結果画像(scanImage)の重心位置に赤い円を描画
+            cv::circle(scanImage, cv::Point(p.x, p.y), 5, cv::Scalar(0, 0, 255), -1);
             footPoints.push_back(pointF); // 変換後の実世界座標を格納
              printf("%f, %f\n", pointF.x, pointF.y); // (デバッグ用)座標をコンソールに表示
 

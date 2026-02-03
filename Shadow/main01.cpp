@@ -118,7 +118,7 @@ struct Camera {
 }g_Cam[2];
 
 Vec_3D objPos;  //影物体
-Vec_3D lightPos0 ={0.0, g_areaConfig.lightH/2.0, g_areaConfig.scanH/2.0 + 440.0} ;  //LED光源座標
+Vec_3D lightPos0 ={0.0, g_areaConfig.lightH/2.0, g_areaConfig.scanH/2.0 + 80.0} ;  //LED光源座標
 Vec_3D touchPos, touchPos0;  //手を触れた場所
 
 Vec_3D lightVec;  //光線ベクトル
@@ -249,7 +249,7 @@ void initGL()
 
         //テクスチャ
         //テクスチャオブジェクト生成(#100)
-        textureImage = cv::imread("Obj_02.png", cv::IMREAD_UNCHANGED);
+        textureImage = cv::imread("Obj_04.png", cv::IMREAD_UNCHANGED);
         objPos.s = textureImage.cols; objPos.t = textureImage.rows;
         objPos.id = 100;
         glBindTexture(GL_TEXTURE_2D, objPos.id);  //テクスチャオブジェクト生成
@@ -276,7 +276,7 @@ void initGL()
     frameImage1 = cv::Mat(cv::Size(TEX_SIZE, TEX_SIZE), CV_8UC4);
 
     //表示パネルサイズ・位置
-    objPos.u = 130.0;  //テクスチャオブジェクトの横幅
+    objPos.u = 50.0;  //テクスチャオブジェクトの横幅
     objPos.x = 0.0;
     objPos.y = objPos.u*objPos.t/objPos.s*0.5;
     objPos.z = g_areaConfig.scanH/2.0 + g_object.scaleZ/2.0;  //位置mm
@@ -749,7 +749,7 @@ void keyboard(unsigned char key, int x, int y)
 
         case 't':
 
-         lightPos0 ={0.0, g_areaConfig.lightH/2.0, g_areaConfig.scanH/2.0 + 440.0};
+         lightPos0 ={0.0, g_areaConfig.lightH/2.0, g_areaConfig.scanH/2.0 + 100.0} ;
             break;
 
         case '1'://立方体
