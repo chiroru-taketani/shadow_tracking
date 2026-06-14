@@ -81,6 +81,7 @@ int main(int argc, char *argv[])
     }
     // スキャンパラメータ(スキャン範囲)を設定 (-90度から+90度まで)
     urg.set_scanning_parameter(urg.deg2step(-scanAngle / 2), urg.deg2step(scanAngle / 2), 0);
+
     // 距離データの計測を無限に繰り返すように設定して開始
     urg.start_measurement(qrk::Urg_driver::Distance, qrk::Urg_driver::Infinity_times, 0);
 
@@ -155,8 +156,6 @@ void initGL()
 void display()
 {
     //---- [1] LiDARデータをOpenGLで描画 ----
-
-
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // 画面(カラーバッファとデプスバッファ)をクリア
     glLoadIdentity();                                   // 座標変換行列を初期化
 
@@ -176,9 +175,6 @@ void display()
 
         double rad = urg.index2rad(i);  // i番目のスキャン点の角度(ラジアン)を取得
         double x = -len * sin(rad);     // i番目のスキャン点のx座標 (センサー座標系→OpenGL座標系)
-        // if(x < -2.0){
-        //     continue;
-        // }
         double y = len * cos(rad);      // i番目のスキャン点のy座標 (センサー座標系→OpenGL座標系)
         double z = 0;                   // 2Dなのでzは0
 
