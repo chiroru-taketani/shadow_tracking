@@ -64,14 +64,14 @@ double mapRange(double value, double oldMin, double oldMax, double newMin, doubl
 struct AppConfig {
     int dispMode = 0;       // 0:通常表示, 1:デバッグ用ガイド表示（d）
     int objectFlg = 3;      // 描画する物体の種類 (0:テクスチャ板, 1:立方体, 2:立方体と球体)（数字キー）
-    double frameRate = 30.0; //フレームレート
+    double frameRate = 60.0; //フレームレート
     double renderScale = 1.0; //解像度調整用のスケール係数
 } g_appConfig;
 
 // --- 空間・エリアの設定 ---
 struct AreaConfig {
     double scanW = 400.0; // スキャンエリアの横幅 (mm)
-    double scanH = 200.0; // スキャンエリアの縦幅 (mm)
+    double scanH = 300.0; // スキャンエリアの縦幅 (mm)
     double aspectRate = 9.0 / 16.0; // LEDパネルのアスペクト比 (縦/横)
     double lightW = 4500.0;         // LEDパネルの横幅
     double lightH = lightW * aspectRate; // LEDパネルの縦幅 (lightW * aspectRate)
@@ -94,10 +94,10 @@ int chaseFlg = 0;       // LIDARによる追従状態 (0:未検知/待機, 1:追
 unsigned char shadowVal = 255;  //影かどうか（0は影）
 
 
-double hand_dist = 500;  //手の認識距離精度（mm）大きいほど甘くなる
+// double hand_dist = 500;  //手の認識距離精度（mm）大きいほど甘くなる
 
 
-double obj_light_dist = 800.0; //LEDと物体との距離(mm)
+double obj_light_dist = 1100.0; //LEDと物体との距離(mm)
 double deskHeight = 730.0; // 机の高さ (mm) + 台座の高さ
 
 
@@ -886,7 +886,7 @@ void mouse1(int button, int state, int x, int y)
             //タッチ位置
             Vec_3D touchPosX;
             touchPosX.x = (g_winInfo[wID].mX-g_areaConfig.scanW*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
-            touchPosX.y = 0.0;
+            touchPosX.y = 0.0 + deskHeight;
             touchPosX.z = (g_winInfo[wID].mY-g_areaConfig.scanH*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
             double len = sqrt(pow(touchPos.x-touchPosX.x,2)+pow(touchPos.z-touchPosX.z,2));
             touchPos = touchPosX;
@@ -949,7 +949,8 @@ void motion1(int x, int y)
     else if (g_winInfo[wID].mButton==GLUT_LEFT_BUTTON && shadowVal==0) {
         //タッチ位置
         touchPos.x = (g_winInfo[wID].mX-g_areaConfig.scanW*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
-        touchPos.y = 0.0;
+        touchPos.y = 0.0 + deskHeight;
+
         touchPos.z = (g_winInfo[wID].mY-g_areaConfig.scanH*g_areaConfig.resolution*0.5)/g_areaConfig.resolution;
 
         lightVec.x = lightCollPos.x-touchPos.x;
@@ -972,7 +973,6 @@ void motion1(int x, int y)
 void keyboard(unsigned char key, int x, int y)
 {
     switch (key) {
-        printf("キーが押されました: %c (ASCII: %d)\n", key, key);
 
         case 27:  //[ESC]
             exit(0);
@@ -1023,11 +1023,11 @@ void LidarInteraction() {
     FILE *fp = fopen("../LIDAR1b/footpoint.txt", "r");
     if (fp == NULL) return;
 
-
-
     int tmpNum;
     double tmpX, tmpZ;
     if (fscanf(fp, "%d", &tmpNum) == 1 && fscanf(fp, "%lf,%lf", &tmpX, &tmpZ) == 2) {
+
+
 
          //printf("tmpX, tmpZ = (%f, %f)\n", tmpX, tmpZ);//LiDAR空間での位置
         // --- 座標変換 (LiDAR -> mm) ---
@@ -1036,8 +1036,6 @@ void LidarInteraction() {
         touchPos0.z = (tmpZ * 10.0) - g_areaConfig.scanH / 2.0;
 
         //printf("touchPos0.x,y,z = (%f, %f, %f)\n", touchPos0.x, touchPos0.y, touchPos0.z);//CG空間での位置
-
-
 
         // --- 画面上の座標に変換 (mm -> px) ---
         int imgX = (int)((touchPos0.x + g_areaConfig.scanW / 2.0) * g_areaConfig.resolution);
@@ -1066,17 +1064,19 @@ void LidarInteraction() {
                     printf("lightVec.x,y,z = (%f, %f, %f)\n", lightVec.x, lightVec.y, lightVec.z);
 
                     // 物体があるZ平面（objPos.z）との交点を衝突点とする
-                    double t_coll = (objPos.z - touchPos.z) / lightVec.z;
+                    double t_coll = 0.0;
+                    t_coll = (objPos.z - touchPos.z) / lightVec.z;
                     lightCollPos.x = touchPos.x + lightVec.x * t_coll;
                     lightCollPos.y = touchPos.y + lightVec.y * t_coll;
 
-                } else {
+
+                     } else {
                     // 【Phase B: 追従中】
                     // 手の移動距離をチェック（ノイズ除去）
-                    double len = sqrt(pow(touchPos.x - touchPos0.x, 2) + pow(touchPos.z - touchPos0.z, 2));
-                    if (len < hand_dist) {
+                    // double len = sqrt(pow(touchPos.x - touchPos0.x, 2) + pow(touchPos.z - touchPos0.z, 2));
+                    // if (len < hand_dist) {
                         touchPos = touchPos0;
-                    }
+                    // }
                 }
 
                 // 【光源位置の計算】（共通ロジック）
@@ -1091,11 +1091,26 @@ void LidarInteraction() {
                 lightPos0.x = touchPos.x + lightVec.x * t_light;
                 lightPos0.y = touchPos.y + lightVec.y * t_light;
 
-            } else {
+            } else {//影から外れている状態
+
+                //ベクトルを初期化
+                lightVec.x = 0.0;
+                lightVec.y = 0.0;
+                lightVec.z = 0.0;
+
                 // 影から外れたら追従終了
                 chaseFlg = 0;
+
+
             }
         }
+    } else {
+        // LiDARデータが読めない場合（手がセンサ範囲外に出た等）
+        // 追従状態をリセット
+        lightVec.x = 0.0;
+        lightVec.y = 0.0;
+        lightVec.z = 0.0;
+        chaseFlg = 0;
     }
     fclose(fp);
 }
