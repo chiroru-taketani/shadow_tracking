@@ -314,11 +314,11 @@ void initGL()
     frameImage = cv::Mat(cv::Size(TEX_SIZE, TEX_SIZE), CV_8UC3);
     frameImage1 = cv::Mat(cv::Size(TEX_SIZE, TEX_SIZE), CV_8UC4);
 
-    //表示パネルサイズ・位置
+    //オブジェクトの位置
     objPos.u = 200.0;  //テクスチャオブジェクトの横幅
     objPos.x = 0.0;
     objPos.y = objPos.u*objPos.t/objPos.s*0.5;
-    objPos.z = g_areaConfig.scanH/2.0 + g_object.scaleZ/2.0;  //位置mm
+    objPos.z = g_areaConfig.scanH + g_object.scaleZ/2.0;  //位置mm
 
     // //光源位置
     // lightPos0.x = 0.0;
