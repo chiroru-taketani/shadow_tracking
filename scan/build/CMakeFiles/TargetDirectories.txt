@@ -1,0 +1,3 @@
+/Users/x22067xx/Documents/lab/shadow_tracking/scan/build/CMakeFiles/PointCloudToMesh.dir
+/Users/x22067xx/Documents/lab/shadow_tracking/scan/build/CMakeFiles/edit_cache.dir
+/Users/x22067xx/Documents/lab/shadow_tracking/scan/build/CMakeFiles/rebuild_cache.dir

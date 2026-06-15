@@ -277,7 +277,7 @@ void display()
             }
         }
     }
-    std::vector<Vec_3D> footPoints; // 検出した物体の重心座標を格納するベクター
+    std::vector<Vec_3D> handPoint; // 検出した物体の重心座標を格納するベクター
 
     // 【ステップ2】一番近い物体が見つかった場合のみ、描画と保存を行う
     if (closestTargetIndex != -1)
@@ -312,21 +312,21 @@ void display()
         }
 
         // ファイル出力用に座標を保存
-        footPoints.push_back(tmpPoint);
+        handPoint.push_back(tmpPoint);
     }else{
-        // 誰も見つからなかった場合は初回フラグをリセットし、次に人が入ってきた時に備える
+        // なにも見つからなかった場合は初回フラグをリセットし、
         isFirst =true;
     }
 
-    printf("%ld 個の物体(一番手前のみ)を認識しました\n", footPoints.size()); // (デバッグ用)
+    printf("%ld 個の物体(一番手前のみ)を認識しました\n", handPoint.size()); // (デバッグ用)
     printf("===========\n");
 
     //---- [4] 結果をファイルに出力 ----
     fp = fopen(footPointFile, "w");          // 出力ファイルを開く (w: 上書きモード)
-    fprintf(fp, "%ld\n", footPoints.size()); // 最初に検出した物体の数を出力
-    for (int i = 0; i < footPoints.size(); i++)
+    fprintf(fp, "%ld\n", handPoint.size()); // 最初に検出した物体の数を出力
+    for (int i = 0; i < handPoint.size(); i++)
     { // 各物体の座標を出力
-        fprintf(fp, "%f,%f\n", footPoints[i].x, footPoints[i].y);
+        fprintf(fp, "%f,%f\n", handPoint[i].x, handPoint[i].y);
     }
     fclose(fp); // ファイルを閉じる
 

@@ -67,7 +67,7 @@ struct AppConfig {
 // --- 空間・エリアの設定 ---
 struct AreaConfig {
     double scanW = 400.0; // スキャンエリアの横幅 (mm)
-    double scanH = 150.0; // スキャンエリアの縦幅 (mm)
+    double scanH = 200.0; // スキャンエリアの縦幅 (mm)
     double aspectRate = 9.0 / 16.0; // LEDパネルのアスペクト比 (縦/横)
     double lightW = 250.0;  // LEDパネルの横幅(mm)
     double lightH = 128.0; // LEDパネルの縦幅 (lightW * aspectRate)
@@ -176,6 +176,7 @@ int main(int argc, char *argv[])
     g_Serial.fd = initSerial(g_Serial.port);
     if (g_Serial.fd == -1) {
         printf("ポートが開けません: %s\n", g_Serial.port);
+        exit(0);
     } else {
         printf("ポート開きます！: %s\n", g_Serial.port);
     }
@@ -621,7 +622,7 @@ void display1()
     glReadPixels(0, 0, g_winInfo[1].W * g_appConfig.renderScale, g_winInfo[1].H *g_appConfig.renderScale, GL_BGR, GL_UNSIGNED_BYTE, shadowAreaImage.data);
     cv::flip(shadowAreaImage, shadowAreaImage, 0);
     cv::cvtColor(shadowAreaImage, shadowAreaGrayImage, cv::COLOR_BGR2GRAY);
-    //cv::imshow("shadowAreaImage", shadowAreaImage);
+    cv::imshow("shadowAreaImage", shadowAreaImage);
 }
 
 //ディスプレイコールバック関数  CG2 LEDパネルに表示される
@@ -1019,33 +1020,33 @@ void updateLidarInteraction() {
         touchPosX0.y = smoothedPos.y / sampleCount;
         touchPosX0.z = smoothedPos.z / sampleCount;
 
-        // --- 極端な移動を検出して無視 ---
-        if (prevPosValid) {
-            // 前回の位置との距離を計算
-            double moveDistance = sqrt(
-                pow(touchPosX0.x - prevTouchPos.x, 2) +
-                pow(touchPosX0.z - prevTouchPos.z, 2)
-            );
+        // // --- 極端な移動を検出して無視 ---
+        // if (prevPosValid) {
+        //     // 前回の位置との距離を計算
+        //     double moveDistance = sqrt(
+        //         pow(touchPosX0.x - prevTouchPos.x, 2) +
+        //         pow(touchPosX0.z - prevTouchPos.z, 2)
+        //     );
 
-            // 移動距離が閾値を超えている場合は無視（前回の値を使用）
-            if (moveDistance > MAX_MOVE_DISTANCE) {
-                printf("極端な移動を検出: %.1fmm > %.1fmm (無視)\n", moveDistance, MAX_MOVE_DISTANCE);
-                touchPosX0 = prevTouchPos;  // 前回の値を使用
-            }
-            // 移動距離が最小閾値以下の場合も無視（デッドゾーン）
-            else if (moveDistance < MIN_MOVE_DISTANCE) {
-                // printf("微小な移動を検出: %.1fmm < %.1fmm (無視)\n", moveDistance, MIN_MOVE_DISTANCE);
-                touchPosX0 = prevTouchPos;  // 前回の値を使用
-            }
-            else {
-                // 正常な移動なので、前回の位置を更新
-                prevTouchPos = touchPosX0;
-            }
-        } else {
-            // 初回は前回の位置として記録
-            prevTouchPos = touchPosX0;
-            prevPosValid = true;
-        }
+        //     // 移動距離が閾値を超えている場合は無視（前回の値を使用）
+        //     if (moveDistance > MAX_MOVE_DISTANCE) {
+        //         printf("極端な移動を検出: %.1fmm > %.1fmm (無視)\n", moveDistance, MAX_MOVE_DISTANCE);
+        //         touchPosX0 = prevTouchPos;  // 前回の値を使用
+        //     }
+        //     // 移動距離が最小閾値以下の場合も無視（デッドゾーン）
+        //     else if (moveDistance < MIN_MOVE_DISTANCE) {
+        //         // printf("微小な移動を検出: %.1fmm < %.1fmm (無視)\n", moveDistance, MIN_MOVE_DISTANCE);
+        //         touchPosX0 = prevTouchPos;  // 前回の値を使用
+        //     }
+        //     else {
+        //         // 正常な移動なので、前回の位置を更新
+        //         prevTouchPos = touchPosX0;
+        //     }
+        // } else {
+        //     // 初回は前回の位置として記録
+        //     prevTouchPos = touchPosX0;
+        //     prevPosValid = true;
+        // }
 
         // --- 画面上の座標に変換 (mm -> px) ---
         int imgX = (int)((touchPosX0.x + g_areaConfig.scanW / 2.0) * g_areaConfig.resolution);

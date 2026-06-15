@@ -1,0 +1,2 @@
+set(__QT_DEPLOY_TARGET_PointCloudToMesh_FILE /Users/x22067xx/Documents/lab/shadow_tracking/scan/build/PointCloudToMesh)
+set(__QT_DEPLOY_TARGET_PointCloudToMesh_TYPE EXECUTABLE)

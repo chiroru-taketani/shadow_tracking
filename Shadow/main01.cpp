@@ -89,7 +89,10 @@ int chaseFlg = 0;       // LIDARによる追従状態 (0:未検知/待機, 1:追
 unsigned char shadowVal = 255;  //影かどうか（0は影）
 
 
-double hand_dist = 1000;  //手の認識距離精度（mm）大きいほど甘くなる
+double hand_dist = 100;  //手の認識距離精度（mm）大きいほど甘くなる
+
+//LEDと物体との距離(mm)
+double obj_light_dist =90.0;
 
 
 struct ObjectConfig{
@@ -118,7 +121,7 @@ struct Camera {
 }g_Cam[2];
 
 Vec_3D objPos;  //影物体
-Vec_3D lightPos0 ={0.0, g_areaConfig.lightH/2.0, g_areaConfig.scanH/2.0 + 80.0} ;  //LED光源座標
+Vec_3D lightPos0 = {0.0, g_areaConfig.lightH / 2.0, g_areaConfig.scanH / 2.0 + obj_light_dist}; //LED光源座標
 Vec_3D touchPos, touchPos0;  //手を触れた場所
 
 Vec_3D lightVec;  //光線ベクトル
@@ -249,7 +252,7 @@ void initGL()
 
         //テクスチャ
         //テクスチャオブジェクト生成(#100)
-        textureImage = cv::imread("Obj_04.png", cv::IMREAD_UNCHANGED);
+        textureImage = cv::imread("Obj_01.png", cv::IMREAD_UNCHANGED);
         objPos.s = textureImage.cols; objPos.t = textureImage.rows;
         objPos.id = 100;
         glBindTexture(GL_TEXTURE_2D, objPos.id);  //テクスチャオブジェクト生成
@@ -749,7 +752,7 @@ void keyboard(unsigned char key, int x, int y)
 
         case 't':
 
-         lightPos0 ={0.0, g_areaConfig.lightH/2.0, g_areaConfig.scanH/2.0 + 100.0} ;
+            lightPos0 = {0.0, g_areaConfig.lightH / 2.0, g_areaConfig.scanH / 2.0 + obj_light_dist};
             break;
 
         case '1'://立方体
