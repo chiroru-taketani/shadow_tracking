@@ -71,7 +71,7 @@ struct AppConfig {
 // --- 空間・エリアの設定 ---
 struct AreaConfig {
     double scanW = 400.0; // スキャンエリアの横幅 (mm)
-    double scanH = 300.0; // スキャンエリアの縦幅 (mm)
+    double scanH = 250.0; // スキャンエリアの縦幅 (mm)
     double aspectRate = 9.0 / 16.0; // LEDパネルのアスペクト比 (縦/横)
     double lightW = 4500.0;         // LEDパネルの横幅
     double lightH = lightW * aspectRate; // LEDパネルの縦幅 (lightW * aspectRate)
@@ -97,14 +97,14 @@ unsigned char shadowVal = 255;  //影かどうか（0は影）
 // double hand_dist = 500;  //手の認識距離精度（mm）大きいほど甘くなる
 
 
-double obj_light_dist = 1100.0; //LEDと物体との距離(mm)
+double obj_light_dist = 1300.0; //LEDと物体との距離(mm)
 double deskHeight = 730.0; // 机の高さ (mm) + 台座の高さ
 
 
 struct ObjectConfig{
-      double scaleX = 30.0;
-      double scaleY = 30.0;
-      double scaleZ = 30.0;
+      double scaleX = 110.0;
+      double scaleY = 110.0;
+      double scaleZ = 65.0;
 } g_object;
 
 
@@ -803,8 +803,20 @@ void display2()
     glLoadIdentity();  //行列初期化
 
     //照明
-    //glColor4d(1.0, 2 * lightPos0.y / g_areaConfig.lightH, 2 * lightPos0.y / g_areaConfig.lightH, 1.0);
-    glColor4d(1.0,1.0,1.0,1.0);
+    // glColor4d(1.6 * lightPos0.y / g_areaConfig.lightH,
+    //           1.6 * lightPos0.y / g_areaConfig.lightH,
+    //           1.0,
+    //           1.0);//青
+    // glColor4d(1.0,
+    //           1.6 * lightPos0.y / g_areaConfig.lightH,
+    //           1.6 * lightPos0.y / g_areaConfig.lightH,
+    //           1.0);//赤
+    // glColor4d(1.6 * lightPos0.y / g_areaConfig.lightH,
+    //           1.0,
+    //           1.6 * lightPos0.y / g_areaConfig.lightH,
+    //           1.0);//緑
+
+    glColor4d(1.0,1.0,1.0,1.0);//白
     glPushMatrix();
     glTranslated(-lightPos0.x, lightPos0.y, 0.0);
     glScaled(70.0, 70.0, 1.0);
