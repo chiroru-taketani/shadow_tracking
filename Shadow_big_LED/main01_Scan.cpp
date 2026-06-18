@@ -288,7 +288,7 @@ void initGL()
 
         //テクスチャ
         //テクスチャオブジェクト生成(#100)
-        textureImage = cv::imread("Obj_05.png", cv::IMREAD_UNCHANGED);
+        textureImage = cv::imread("Obj_06.png", cv::IMREAD_UNCHANGED);
         objPos.s = textureImage.cols; objPos.t = textureImage.rows;
         objPos.id = 100;
         glBindTexture(GL_TEXTURE_2D, objPos.id);  //テクスチャオブジェクト生成
@@ -315,7 +315,7 @@ void initGL()
     frameImage1 = cv::Mat(cv::Size(TEX_SIZE, TEX_SIZE), CV_8UC4);
 
     //オブジェクトの位置
-    objPos.u = 200.0;  //テクスチャオブジェクトの横幅
+    objPos.u = 110.0;  //テクスチャオブジェクトの横幅
     objPos.x = 0.0;
     objPos.y = objPos.u*objPos.t/objPos.s*0.5;
     objPos.z = g_areaConfig.scanH + g_object.scaleZ/2.0;  //位置mm
@@ -360,7 +360,7 @@ void scene()
         glDisable(GL_LIGHTING);
         glColor4d(1.0, 0.0, 0.0, 1.0);
         glPushMatrix();
-        glTranslated(40.0, g_object.scaleY/2.0, objPos.z);
+        glTranslated(40.0, g_object.scaleY / 2.0 + deskHeight, objPos.z);
         glScaled(g_object.scaleX, g_object.scaleY, g_object.scaleZ);
         glutSolidCube(1.0);
         glPopMatrix();
@@ -368,7 +368,7 @@ void scene()
         glDisable(GL_LIGHTING);
         glColor4d(1.0, 0.0, 0.0, 1.0);
         glPushMatrix();
-        glTranslated(-40.0, 15.0, objPos.z);
+        glTranslated(-40.0, 15.0 + deskHeight, objPos.z);
         glScaled(15.0, 15.0, 15.0);
         glutSolidSphere(1.0, 36, 18);
         glPopMatrix();
@@ -494,14 +494,14 @@ void scene()
         //マウスのタッチ位置
         glColor4d(1.0, 0.0, 0.0, 1.0);
         glPushMatrix();
-        glTranslated(touchPos.x, 0.0, touchPos.z);
+        glTranslated(touchPos.x, touchPos.y, touchPos.z);
         glScaled(2.5, 2.5, 2.5);
         glutSolidSphere(1.0, 36, 18);
         glPopMatrix();
 
         glColor4d(1.0, 0.0, 1.0, 1.0);
         glPushMatrix();
-        glTranslated(touchPos0.x, 0.0, touchPos0.z);
+        glTranslated(touchPos0.x, touchPos0.y, touchPos0.z);
         glScaled(2.5, 2.5, 2.5);
         glutSolidSphere(1.0, 36, 18);
         glPopMatrix();
@@ -509,7 +509,7 @@ void scene()
         glColor4d(1.0, 0.0, 0.0, 1.0);
         for (int i=0; i<footNum; i++) {
             glPushMatrix();
-            glTranslated(footPoint[i].x, 0.0, footPoint[i].z);
+            glTranslated(footPoint[i].x, deskHeight, footPoint[i].z);
             glScaled(2.5, 2.5, 2.5);
             glutSolidSphere(1.0, 36, 18);
             glPopMatrix();
@@ -690,7 +690,7 @@ void display1()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  //画面消去
     double targetX = 0;
-    double targetY = deskHeight; // 先ほど設定した机の高さを足します
+    double targetY = deskHeight;
     double targetZ = 0;
 
 
@@ -1038,8 +1038,6 @@ void LidarInteraction() {
     int tmpNum;
     double tmpX, tmpZ;
     if (fscanf(fp, "%d", &tmpNum) == 1 && fscanf(fp, "%lf,%lf", &tmpX, &tmpZ) == 2) {
-
-
 
          //printf("tmpX, tmpZ = (%f, %f)\n", tmpX, tmpZ);//LiDAR空間での位置
         // --- 座標変換 (LiDAR -> mm) ---
