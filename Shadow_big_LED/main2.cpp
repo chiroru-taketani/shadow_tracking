@@ -759,7 +759,7 @@ void display2()
         //           1.6 * lightPos0[i].y / g_areaConfig.lightH,
         //           1.0);//緑
         if(i == 1){
-            glColor4d(1.0, 1.0, 1.0, 1.0);
+            glColor4d(1.0, 0.0, 0.0, 1.0);
         }else{
             glColor4d(1.0, 1.0, 1.0, 1.0);
         }

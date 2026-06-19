@@ -64,7 +64,7 @@ double mapRange(double value, double oldMin, double oldMax, double newMin, doubl
 struct AppConfig {
     int dispMode = 0;       // 0:通常表示, 1:デバッグ用ガイド表示（d）
     int objectFlg = 3;      // 描画する物体の種類 (0:テクスチャ板, 1:立方体, 2:立方体と球体)（数字キー）
-    double frameRate = 60.0; //フレームレート
+    double frameRate = 30.0; //フレームレート
     double renderScale = 1.0; //解像度調整用のスケール係数
 } g_appConfig;
 
@@ -697,14 +697,14 @@ void display1()
     //視点座標の計算
     Vec_3D e;
     e.x = g_Cam[1].dist*cos(g_Cam[1].degX*M_PI/180.0)*sin(g_Cam[1].degY*M_PI/180.0);
-    e.y = g_Cam[1].dist * sin(g_Cam[1].degX * M_PI / 180.0) + targetY;
+    e.y = g_Cam[1].dist * sin(g_Cam[1].degX * M_PI / 180.0) + targetY ;
     e.z = g_Cam[1].dist*cos(g_Cam[1].degX*M_PI/180.0)*cos(g_Cam[1].degY*M_PI/180.0);
 
     //モデルビュー変換の設定
     glMatrixMode(GL_MODELVIEW);  //変換行列の指定（設定対象はモデルビュー変換行列）
     glLoadIdentity();  //行列初期化
     if (g_Cam[1].degX>90.0) {
-        gluLookAt(e.x, e.y, e.z, targetX, targetY, targetZ, 0.0, -1.0, 0.0); //視点視線設定（視野変換行列を乗算）
+        gluLookAt(e.x, e.y, e.z, targetX, targetY, targetZ, 0.0, -1.0 + 400.0, 0.0); //視点視線設定（視野変換行列を乗算）
     }
     else {
         gluLookAt(e.x, e.y, e.z, targetX, targetY, targetZ, 0.0, 1.0, 0.0); //視点視線設定（視野変換行列を乗算）
