@@ -391,6 +391,7 @@ void keyboard(unsigned char key, int x, int y)
     {
     case 27:     // ESCキー(ASCIIコード 27)が押された場合
         exit(0); // プログラムを終了する
+        urg.close();
         break;
 
     default:

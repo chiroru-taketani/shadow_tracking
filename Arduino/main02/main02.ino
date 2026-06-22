@@ -9,7 +9,7 @@ MatrixPanel_I2S_DMA *dma_display = nullptr;
 
 // 円の数と描画パラメータ
 const int NUM_CIRCLES = 2;       // 描画する円の数
-int16_t circle_radius = 3;       // 円の半径
+int16_t circle_radius = 2;       // 円の半径
 
 // 1つの円に関するデータをまとめる「構造体」
 struct Circle {
@@ -39,7 +39,7 @@ void setup() {
   dma_display->setBrightness8(255);       // 明るさを設定 (0-255)
   dma_display->fillScreenRGB888(0, 0, 0); // 起動時に画面を黒でクリア
 
-  Serial.begin(115200); 
+  Serial.begin(115200);
   Serial.println("ESP32 setup complete. Waiting for coordinate data (e.g., '0,38,23')...");
 
   // すべての円の初期状態を設定
@@ -52,7 +52,7 @@ void setup() {
     circles[i].g_val = 255;
     circles[i].b_val = 255;
   }
-  
+
   // 起動時に初期位置へ円を描画
   drawCircles();
 }
@@ -67,9 +67,9 @@ void drawCircles() {
   // 2. ループを使って、すべての円を描画します。
   for (int i = 0; i < NUM_CIRCLES; i++) {
     dma_display->fillCircle(
-      (int16_t)circles[i].current_x, 
-      (int16_t)circles[i].current_y, 
-      circle_radius, 
+      (int16_t)circles[i].current_x,
+      (int16_t)circles[i].current_y,
+      circle_radius,
       dma_display->color565(circles[i].r_val, circles[i].g_val, circles[i].b_val)
     );
   }
@@ -78,12 +78,12 @@ void drawCircles() {
 void loop() {
   // --- ▼▼▼ データ受信処理 ▼▼▼ ---
   if (Serial.available() > 0) {
-    
+
     // 受信データを\nまで文字列として読み込む
     String received_data = Serial.readStringUntil('\n');
 
     // 1つ目のカンマと2つ目のカンマの位置を探す
-    int first_comma = received_data.indexOf(','); 
+    int first_comma = received_data.indexOf(',');
     int second_comma = received_data.indexOf(',', first_comma + 1);
 
     // カンマが正しく2つ見つかった場合のみ処理を実行
@@ -92,10 +92,10 @@ void loop() {
       String id_string = received_data.substring(0, first_comma);
       String x_string = received_data.substring(first_comma + 1, second_comma);
       String y_string = received_data.substring(second_comma + 1);
-      
+
       // 文字列を整数に変換
       int id = id_string.toInt();
-      
+
       // IDが0または1の場合に、目標座標を更新
       if (id >= 0 && id < NUM_CIRCLES) {
         circles[id].target_x = x_string.toInt();
@@ -117,7 +117,7 @@ void loop() {
 
   // 描画を行う
   drawCircles();
-  
+
   // アニメーション用ウェイト
   delay(20);
 }
