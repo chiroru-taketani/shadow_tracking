@@ -62,7 +62,7 @@ double mapRange(double value, double oldMin, double oldMax, double newMin, doubl
 struct AppConfig
 {
     int dispMode = 0;         // 0:通常表示, 1:デバッグ用ガイド表示（d）
-    int objectFlg = 3;        // 描画する物体の種類 (0:テクスチャ板, 1:立方体, 2:立方体と球体, 3:PLYモデル)（数字キー）
+    int objectFlg = 0;        // 描画する物体の種類 (0:テクスチャ板, 1:立方体, 2:立方体と球体, 3:PLYモデル)（数字キー）
     double frameRate = 60.0;  //フレームレート
     double renderScale = 1.0; //解像度調整用のスケール係数
 } g_appConfig;
@@ -71,9 +71,9 @@ struct AppConfig
 struct AreaConfig
 {
     double scanW = 400.0;                // スキャンエリアの横幅 (mm)
-    double scanH = 250.0;                // スキャンエリアの縦幅 (mm)
+    double scanH = 200.0;                // スキャンエリアの縦幅 (mm)
     double aspectRate = 9.0 / 16.0;      // LEDパネルのアスペクト比 (縦/横)
-    double lightW = 4500.0;              // LEDパネルの横幅(mm)
+    double lightW = 250.0;              // LEDパネルの横幅(mm)
     double lightH = lightW * aspectRate; // LEDパネルの縦幅 (lightW * aspectRate)
     double resolution = 2.0;             // 1mmあたりのピクセル数．CG1のサイズが変化（画像処理の精度に影響）
 
@@ -94,14 +94,17 @@ int chaseFlg0[3] = {0}; // LIDARによる追従状態 (0:赤影, 1:緑影, 2:重
 
 double hand_dist = 8.0; //手の認識距離精度（mm）【ノイズ低減】
 
-double obj_light_dist = 1300.0; //LEDと物体との距離(mm)
-double deskHeight = 730.0;      // 机の高さ (mm) + 台座の高さ
+//double obj_light_dist = 1300.0; //LEDと物体との距離(mm)
+double obj_light_dist = 10.0; //LEDと物体との距離(mm)
+//机の上
+//double deskHeight = 730.0;      // 机の高さ (mm) + 台座の高さ
+double deskHeight = 0.0;      // 机の高さ (mm) + 台座の高さ
 
 struct ObjectConfig
 {
-    double scaleX = 110.0;
-    double scaleY = 110.0;
-    double scaleZ = 65.0;
+    double scaleX = 30.0;
+    double scaleY = 30.0;
+    double scaleZ = 30.0;
 } g_object;
 
 // PLYモデル読み込み用データ構造
