@@ -61,10 +61,10 @@ void setup() {
  * @brief すべての円を画面に描画します。
  */
 void drawCircles() {
-  // 1. 画面全体を黒で塗りつぶして、前の描画を消去します。
+  // 1. 画面全体を黒で塗りつぶして、前の描画を消去
   dma_display->fillScreenRGB888(0, 0, 0);
 
-  // 2. ループを使って、すべての円を描画します。
+  // 2. ループを使って、すべての円を描画
   for (int i = 0; i < NUM_CIRCLES; i++) {
     dma_display->fillCircle(
       (int16_t)circles[i].current_x,

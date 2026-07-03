@@ -17,6 +17,7 @@
 //定数宣言
 #define TEX_SIZE 512  //テクスチャサイズ
 #define POINTMAX 20
+#define LIGHT_NUM 2 // 光源の数
 
 //三次元ベクトル構造体
 typedef struct _Vec_3D
@@ -67,7 +68,7 @@ struct AppConfig {
 // --- 空間・エリアの設定 ---
 struct AreaConfig {
     double scanW = 400.0; // スキャンエリアの横幅 (mm)
-    double scanH = 200.0; // スキャンエリアの縦幅 (mm)
+    double scanH = 230.0; // スキャンエリアの縦幅 (mm)
     double aspectRate = 9.0 / 16.0; // LEDパネルのアスペクト比 (縦/横)
     double lightW = 250.0;  // LEDパネルの横幅(mm)
     double lightH = 128.0; // LEDパネルの縦幅 (lightW * aspectRate)
@@ -82,8 +83,6 @@ struct AreaConfig {
     double LEDH = 32.0; // LEDパネルの縦ピクセル
 } g_areaConfig;
 
-
-#define LIGHT_NUM 2  // 光源の数
 
 //---シリアル通信の情報---
 struct SerialConfig {
@@ -176,7 +175,7 @@ int main(int argc, char *argv[])
     g_Serial.fd = initSerial(g_Serial.port);
     if (g_Serial.fd == -1) {
         printf("ポートが開けません: %s\n", g_Serial.port);
-        exit(0);
+        //exit(0);
     } else {
         printf("ポート開きます！: %s\n", g_Serial.port);
     }
@@ -256,7 +255,7 @@ void initGL()
 
     //描画ウィンドウ生成2（照明用映像の生成）
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH | GLUT_DOUBLE);  //ディスプレイモードの指定
-    glutInitWindowSize(g_areaConfig.lightW / g_areaConfig.resolution, g_areaConfig.lightH / g_areaConfig.resolution);  //ウィンドウサイズの指定
+    glutInitWindowSize(500, 500 * g_areaConfig.aspectRate);  //ウィンドウサイズの指定
     glutInitWindowPosition(512, g_areaConfig.scanH*g_areaConfig.resolution+100);  //ウィンドウ位置の指定
     g_winInfo[2].id = glutCreateWindow("CG2");  //ウィンドウの生成
     //コールバック関数の指定
@@ -622,7 +621,7 @@ void display1()
     glReadPixels(0, 0, g_winInfo[1].W * g_appConfig.renderScale, g_winInfo[1].H *g_appConfig.renderScale, GL_BGR, GL_UNSIGNED_BYTE, shadowAreaImage.data);
     cv::flip(shadowAreaImage, shadowAreaImage, 0);
     cv::cvtColor(shadowAreaImage, shadowAreaGrayImage, cv::COLOR_BGR2GRAY);
-    cv::imshow("shadowAreaImage", shadowAreaImage);
+    //cv::imshow("shadowAreaImage", shadowAreaImage);
 }
 
 //ディスプレイコールバック関数  CG2 LEDパネルに表示される
@@ -976,11 +975,13 @@ void keyboard(unsigned char key, int x, int y)
 void updateLidarInteraction() {
     // マウスドラッグ中はLIDARによる判定をスキップ（マウス操作を優先）
     if (isMouseDragging) {
+        printf("マウス操作中");
         return;
     }
 
     // 1. 画像が生成される前のクラッシュ防止
     if (shadowAreaImage.empty()) {
+        printf("shadowAreaImage画像が生成されていません");
         return;
     }
 
@@ -993,69 +994,21 @@ void updateLidarInteraction() {
     double tmpX, tmpZ;
     int flg0 = 0, flg1 = 0, flg2 = 0;
     if (fscanf(fp, "%d", &tmpNum) == 1 && fscanf(fp, "%lf,%lf", &tmpX, &tmpZ) == 2) {
+        //printf("読み込めました\n");
         // --- 座標変換 (LiDAR -> mm) ---
-        Vec_3D rawPos;
-        rawPos.x = -(tmpX * 10.0);
-        rawPos.y = 0.0;
-        rawPos.z = (tmpZ * 10.0) - g_areaConfig.scanH / 2.0;
+        touchPosX0.x = -(tmpX * 10.0);
+        touchPosX0.y = 0.0;
+        touchPosX0.z = (tmpZ * 10.0) - g_areaConfig.scanH / 2.0;
 
-        // --- 履歴バッファに追加 ---
-        touchPosHistory[historyIndex] = rawPos;
-        historyIndex = (historyIndex + 1) % FILTER_SIZE;
-        if (historyIndex == 0) {
-            historyFilled = true;  // バッファが一周したら満たされた
-        }
-
-        // --- 移動平均フィルタで平滑化 ---
-        int sampleCount = historyFilled ? FILTER_SIZE : historyIndex;
-        if (sampleCount == 0) sampleCount = 1;  // 初回対策
-
-        Vec_3D smoothedPos = {0, 0, 0};
-        for (int i = 0; i < sampleCount; i++) {
-            smoothedPos.x += touchPosHistory[i].x;
-            smoothedPos.y += touchPosHistory[i].y;
-            smoothedPos.z += touchPosHistory[i].z;
-        }
-        touchPosX0.x = smoothedPos.x / sampleCount;
-        touchPosX0.y = smoothedPos.y / sampleCount;
-        touchPosX0.z = smoothedPos.z / sampleCount;
-
-        // // --- 極端な移動を検出して無視 ---
-        // if (prevPosValid) {
-        //     // 前回の位置との距離を計算
-        //     double moveDistance = sqrt(
-        //         pow(touchPosX0.x - prevTouchPos.x, 2) +
-        //         pow(touchPosX0.z - prevTouchPos.z, 2)
-        //     );
-
-        //     // 移動距離が閾値を超えている場合は無視（前回の値を使用）
-        //     if (moveDistance > MAX_MOVE_DISTANCE) {
-        //         printf("極端な移動を検出: %.1fmm > %.1fmm (無視)\n", moveDistance, MAX_MOVE_DISTANCE);
-        //         touchPosX0 = prevTouchPos;  // 前回の値を使用
-        //     }
-        //     // 移動距離が最小閾値以下の場合も無視（デッドゾーン）
-        //     else if (moveDistance < MIN_MOVE_DISTANCE) {
-        //         // printf("微小な移動を検出: %.1fmm < %.1fmm (無視)\n", moveDistance, MIN_MOVE_DISTANCE);
-        //         touchPosX0 = prevTouchPos;  // 前回の値を使用
-        //     }
-        //     else {
-        //         // 正常な移動なので、前回の位置を更新
-        //         prevTouchPos = touchPosX0;
-        //     }
-        // } else {
-        //     // 初回は前回の位置として記録
-        //     prevTouchPos = touchPosX0;
-        //     prevPosValid = true;
-        // }
 
         // --- 画面上の座標に変換 (mm -> px) ---
         int imgX = (int)((touchPosX0.x + g_areaConfig.scanW / 2.0) * g_areaConfig.resolution);
         int imgY = (int)((touchPosX0.z + g_areaConfig.scanH / 2.0) * g_areaConfig.resolution);
 
 
-
         // 画像範囲内のチェック
         if (imgX >= 0 && imgX < shadowAreaImage.cols && imgY >= 0 && imgY < shadowAreaImage.rows) {
+            printf("ライダー X:%d Y:%d\n", imgX, imgY);
             cv::Vec3b pixel = shadowAreaImage.at<cv::Vec3b>(imgY, imgX);
 
             isRedShadow = (pixel[2] == 255 && pixel[1] == 77 && pixel[0] == 77);
@@ -1063,9 +1016,11 @@ void updateLidarInteraction() {
             isGreenShadow = (pixel[2] == 77 && pixel[1] == 255 && pixel[0] == 77);
 
             isDoubleShadow = (pixel[2] == 77 && pixel[1] == 202 && pixel[0] == 23);
+            printf("%d,%d,%d\n", pixel[0], pixel[1], pixel[2]);
 
             //赤色の影の中
-            if (pixel[2] == 255 && pixel[1] == 77 && pixel[0] == 77) {
+            if (pixel[2] == 255 && pixel[1] == 77 && pixel[0] == 77)
+            {
                 printf("赤色の影の中\n");
                 // 緑の影を追従中なら赤の新規検出を無視
                 if (chaseFlg0[0] == 0 && flg0 == 0 && chaseFlg0[1] == 0) { //現在、追跡していない状態
@@ -1217,12 +1172,11 @@ void updateLidarInteraction() {
                         flg2=1;
                     }
 
+                }
+                flg2 =1;
             }
-            flg2 =1;
-        }
-    }
-
-            if(flg0 == 0) {
+         }
+        if(flg0 == 0) {
                 // 影から外れたら追従終了
                 chaseFlg0[0] = 0;
                 //isRedShadow = false;  // フラグもリセット
@@ -1237,8 +1191,20 @@ void updateLidarInteraction() {
                 chaseFlg0[2] = 0;
                 //isDoubleShadow = false;  // フラグもリセット
             }
-
+    }
+    else
+    {
+        // LiDARデータが読めない場合（手がセンサ範囲外に出た等）
+        // 追従状態をリセット
+        for (int i = 0; i < LIGHT_NUM; i++)
+        {
+            lightVec[i].x = 0.0;
+            lightVec[i].y = 0.0;
+            lightVec[i].z = 0.0;
+            chaseFlg0[i] = 0;
         }
+    }
+    fclose(fp);
 }
 // timer0内でシリアル通信の送信処理
 void sendLightPosToSerial(){

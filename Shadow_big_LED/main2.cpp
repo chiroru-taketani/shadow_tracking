@@ -153,8 +153,8 @@ struct Camera
 
 Vec_3D objPos; //影物体
 //光源の位置 LEDパネルの位置
-Vec_3D lightPos0[LIGHT_NUM] = {{150.0, g_areaConfig.lightH / 2.0, g_areaConfig.scanH + obj_light_dist},
-                               {-150.0, g_areaConfig.lightH / 2.0, g_areaConfig.scanH / 2.0 + obj_light_dist}};
+Vec_3D lightPos0[LIGHT_NUM] = {{50.0, g_areaConfig.lightH / 2.0, g_areaConfig.scanH + obj_light_dist},
+                               {-50.0, g_areaConfig.lightH / 2.0, g_areaConfig.scanH / 2.0 + obj_light_dist}};
 Vec_3D touchPos;                           //マウス操作用のタッチ位置
 Vec_3D touchPosX0, touchPosX1, touchPosX2; //LIDAR追従用の手の位置
 
@@ -258,11 +258,11 @@ void initGL()
     glEnable(GL_ALPHA_TEST);                           //アルファテスト有効化
     glAlphaFunc(GL_GREATER, 0.1);                      //アルファ値比較関数の設定
 
-    //描画ウィンドウ生成1（影エリア映像の生成）
+    //描画ウィンドウ生成1（影エリア映像の生成）CG1
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH | GLUT_DOUBLE); //ディスプレイモードの指定
-    glutInitWindowSize(g_areaConfig.scanW * g_areaConfig.resolution,
-                       g_areaConfig.scanH *
-                           g_areaConfig.resolution); //ウィンドウサイズの指定スキャンエリアよりもちょっと大きく
+    glutInitWindowSize(g_areaConfig.scanW * g_areaConfig.resolution + 20.0,
+                       g_areaConfig.scanH * g_areaConfig.resolution +
+                           20.0);                    //ウィンドウサイズの指定スキャンエリアよりもちょっと大きく
     glutInitWindowPosition(512, 0);                  //ウィンドウ位置の指定
     g_winInfo[1].id = glutCreateWindow("CG1");       //ウィンドウの生成
     //コールバック関数の指定
