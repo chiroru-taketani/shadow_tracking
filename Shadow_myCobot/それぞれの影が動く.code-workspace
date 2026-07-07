@@ -1,0 +1,27 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../../../Downloads/shadowtest0120 (1)/LIDAR1x"
+		}
+	],
+	"settings": {
+		"terminal.integrated.defaultProfile.windows": "Command Prompt",
+		"explorer.compactFolders": false,
+		"explorer.confirmDragAndDrop": false,
+		"explorer.confirmDelete": false,
+		"explorer.copyRelativePathSeparator": "/",
+		"files.associations": {
+			".clang*": "yaml",
+			"*.hpp.in": "cpp",
+			"*.in": "cpp"
+		},
+		"workbench.editorAssociations": {
+			"*.md": "vscode.markdown.preview.editor",
+			"*.svg": "svgPreviewer.customEditor"
+		},
+		"git.confirmSync": false
+	}
+}
