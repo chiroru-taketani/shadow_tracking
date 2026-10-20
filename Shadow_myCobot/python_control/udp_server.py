@@ -59,10 +59,13 @@ def main():
                 msg = data.decode('utf-8').strip()
                 parts = msg.split(',')
 
-                if len(parts) >= 3:
+                if len(parts) >= 6:
                     raw_x = float(parts[0])
                     raw_y = float(parts[1])
                     raw_z = float(parts[2])
+                    rx = float(parts[3])
+                    ry = float(parts[4])
+                    rz = float(parts[5])
 
                     # 座標変換（オフセット加算）
                     target_x = raw_x + OFFSET_X
@@ -79,7 +82,7 @@ def main():
                     if current_time - last_time >= 0.1:
                         print(f"Move to -> X:{safe_x:.1f}, Y:{safe_y:.1f}, Z:{safe_z:.1f}")
                         # X, Y, Z, Rx, Ry, Rz, 速度, 補間モード
-                        mc.send_coords([safe_x, safe_y, safe_z, -180, 0, 0], 50, 0)
+                        mc.send_coords([safe_x, safe_y, safe_z, rx, ry, rz], 100, 0)
                         last_time = current_time
 
             except ValueError:
@@ -87,6 +90,17 @@ def main():
 
     except KeyboardInterrupt:
         print("\nStopping UDP Server.")
+        print("初期姿勢に戻ります。ぶつからないようご注意ください...")
+        try:
+            # 初期姿勢（安全な角度）へ移動
+            mc.send_angles([0, 0, 0, 0, 90, 0], 50)
+            time.sleep(3) # 移動が終わるまで待機
+            
+            # モーターの力を抜く（手で動かせる状態にする）
+            mc.release_all_servos()
+            print("アームの力を抜いて安全に終了しました。")
+        except Exception as e:
+            print(f"終了処理中にエラーが発生しました: {e}")
     finally:
         sock.close()
 

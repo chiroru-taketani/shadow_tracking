@@ -73,11 +73,16 @@ shadow_tracking/
 │   ├── scandata.txt〜scandata4.txt  # 入力用スキャンデータ
 │   └── output_model.ply           # 出力された3Dメッシュモデル
 │
-└── Arduino/                       # ESP32 LEDパネル制御スケッチ
-    ├── main01/
-    │   └── main01.ino             # 単一光源版（光源点1つのイージング描画）
-    └── main02/
-        └── main02.ino             # 複数光源版（光源点2つの独立イージング描画）
+├── Arduino/                       # ESP32 LEDパネル制御スケッチ
+│   ├── main01/
+│   │   └── main01.ino             # 単一光源版（光源点1つのイージング描画）
+│   └── main02/
+│       └── main02.ino             # 複数光源版（光源点2つの独立イージング描画）
+│
+└── Shadow_myCobot/                # myCobot 280 (ロボットアーム) を用いた物理光源制御版
+    ├── main01_myCobot.cpp         # 影の計算・UDP送信プログラム
+    ├── python_control/            # PythonによるUDP受信・myCobot制御環境
+    └── README.md                  # myCobotモジュールの詳細ドキュメント
 ```
 
 ---
@@ -214,6 +219,18 @@ Kinect でスキャンした点群データ（`scandata.txt`）から、PCL（Po
 
 ---
 
+### 7. Shadow_myCobot（ロボットアーム制御版）
+
+LEDパネルの代わりに、ロボットアーム（myCobot 280）を用いて物理光源を動かす拡張版です。
+
+- **通信**: C++側で影の追従に必要な光源の3D座標(X, Y, Z)および姿勢(Rx, Ry, Rz)を計算し、UDP通信(`127.0.0.1:5005`)でPythonサーバーに送信
+- **制御 (Python)**: `pymycobot` ライブラリを使用してmyCobotを制御。安全のためのソフトウェアリミット処理を実装
+- **実行時の注意**: アームの安全確保のため、必ず **Pythonサーバー（`udp_server.py`）を先に起動** する必要があります。
+
+> **詳細**: [Shadow_myCobot/README.md](Shadow_myCobot/README.md) を参照
+
+---
+
 ## 影操作の原理
 
 1. **光源→影→物体の幾何学的関係を利用**
@@ -231,7 +248,15 @@ Kinect でスキャンした点群データ（`scandata.txt`）から、PCL（Po
 
 ## ビルド方法
 
-### Shadow / Shadow_big_LED（macOS）
+> **💡 Apple Silicon (M1 / M4 Pro) 環境での環境構築・最適化**
+> macOS (Apple Silicon) では Homebrew のパスが `/opt/homebrew` となります。
+> `pkg-config` を用いて OpenCV をビルドする際は、事前に以下のパス設定を行うことを推奨します。
+> 
+> ```bash
+> export PKG_CONFIG_PATH="/opt/homebrew/opt/opencv/lib/pkgconfig:$PKG_CONFIG_PATH"
+> ```
+
+### Shadow / Shadow_myCobot / Shadow_big_LED（macOS）
 
 ```bash
 # main01（単一光源版）

@@ -748,14 +748,14 @@ void display2()
 
     //======================================================================================================================
 
-    glutSwapBuffers();  //描画実行
-
     //描画したシーンを画像としてframeImageに格納
     glReadPixels(0, 0, winW[2]*rDisp, winH[2]*rDisp, GL_BGR, GL_UNSIGNED_BYTE, shadowAreaImage0.data);
     cv::resize(shadowAreaImage0, shadowAreaImage, shadowAreaImage.size());
     cv::flip(shadowAreaImage, shadowAreaImage, 0);
     cv::cvtColor(shadowAreaImage, shadowAreaGrayImage, cv::COLOR_BGR2GRAY);
     //cv::imshow("shadowAreaImage", shadowAreaGrayImage);
+
+    glutSwapBuffers();  //描画実行
 }
 
 //ディスプレイコールバック関数
