@@ -1,14 +1,14 @@
-//g++ -O3 -std=c++11 main01_myCobot.cpp -framework OpenGL -framework GLUT `pkg-config --cflags --libs opencv4` -Wno-deprecated
+//g++ -O3 -std=c++11 main01_myCobot.cpp -framework OpenGL -framework GLUT $(pkg-config --cflags --libs opencv5) -Wno-deprecated -o mycobot_shadow_test
 #include <GLUT/glut.h> //OpenGL/GLUTの使用
+#include <arpa/inet.h>
 #include <math.h>
 #include <opencv2/opencv.hpp> //OpenCV関連ヘッダ
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <unistd.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <time.h>
+#include <unistd.h>
 
 //定数宣言
 #include <algorithm>
@@ -50,8 +50,8 @@ Vec_3D vectorNormalize(Vec_3D v0);
 void glMyTexPlane(int texID, int w, int h);
 void scene();
 
-    //マッピング関数
-    double mapRange(double value, double oldMin, double oldMax, double newMin, double newMax)
+//マッピング関数
+double mapRange(double value, double oldMin, double oldMax, double newMin, double newMax)
 {
     return (value - oldMin) * (newMax - newMin) / (oldMax - oldMin) + newMin;
 }
@@ -102,14 +102,15 @@ double hand_dist = 100; //手の認識距離精度（mm）大きいほど甘く�
 double obj_light_dist = 90.0;
 
 //UDP用のグローバル変数
-int udp_sock;//ソケットの番号
+int udp_sock; //ソケットの番号
 struct sockaddr_in udp_addr;
 
 //UDP初期化関数
-void initUDP(const char* ip, int port){ //IPアドレスとポート番号
-    udp_sock = socket(AF_INET, SOCK_DGRAM, 0);//IPv4 UDPを使う
+void initUDP(const char *ip, int port)
+{                                              //IPアドレスとポート番号
+    udp_sock = socket(AF_INET, SOCK_DGRAM, 0); //IPv4 UDPを使う
     udp_addr.sin_family = AF_INET;
-    udp_addr.sin_port = htons(port);//ポート番号を書き込む
+    udp_addr.sin_port = htons(port); //ポート番号を書き込む
     udp_addr.sin_addr.s_addr = inet_addr(ip);
     printf("UDP Socket initialized: %s:%d\n", ip, port);
 }
@@ -175,8 +176,6 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
-
 
 
 //初期化関数
@@ -947,7 +946,7 @@ void sensLightPostoMyCobot()
     //オイラー角の計算（単位をラジアンから度に変換)
     //Y軸周りの回転（左右：Yaw)
     double ry_rad = atan2(lightVec.x, lightVec.z);
-    double ry_deg = ry_rad * (180.0/ M_PI);
+    double ry_deg = ry_rad * (180.0 / M_PI);
 
     //X軸周りの回転（上下：Pitch）
     double xz_len = sqrt(lightVec.x * lightVec.x + lightVec.z * lightVec.z);
@@ -960,8 +959,16 @@ void sensLightPostoMyCobot()
     //UDPで送信
     char sendBuf[128];
     //XYZはlightPos0の座標（単位はmm,myCobotのベース座標系に合わせる）
-    int len = snprintf(sendBuf, sizeof(sendBuf), "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n",lightPos0.x, lightPos0.y, lightPos0.z, rx_deg, ry_deg, rz_deg);
-    sendto(udp_sock, sendBuf, len, 0, (struct sockaddr *)&udp_addr,sizeof(udp_addr));
+    int len = snprintf(sendBuf,
+                       sizeof(sendBuf),
+                       "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n",
+                       lightPos0.x,
+                       lightPos0.y,
+                       lightPos0.z,
+                       rx_deg,
+                       ry_deg,
+                       rz_deg);
+    sendto(udp_sock, sendBuf, len, 0, (struct sockaddr *)&udp_addr, sizeof(udp_addr));
 }
 
 //タイマーコールバック関数
