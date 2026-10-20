@@ -98,11 +98,11 @@
     "C_Cpp.default.cStandard": "c11",
     "C_Cpp.formatting": "clangFormat",
     "[c]": {
-        "editor.formatOnSave": false,
+        "editor.formatOnSave": true,
         "editor.defaultFormatter": "ms-vscode.cpptools"
     },
     "[cpp]": {
-        "editor.formatOnSave": false,
+        "editor.formatOnSave": true,
         "editor.defaultFormatter": "ms-vscode.cpptools"
     },
     "[cuda-cpp]": {
