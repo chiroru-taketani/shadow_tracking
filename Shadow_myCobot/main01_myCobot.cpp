@@ -1,4 +1,4 @@
-//g++ -O3 -std=c++11 main01_myCobot.cpp -framework OpenGL -framework GLUT $(pkg-config --cflags --libs opencv5) -Wno-deprecated -o mycobot_shadow_test
+//g++ -O3 -std=c++11 main01_myCobot.cpp -framework OpenGL -framework GLUT $(pkg-config --cflags --libs opencv5) -Wno-deprecated
 #include <GLUT/glut.h> //OpenGL/GLUTの使用
 #include <arpa/inet.h>
 #include <math.h>

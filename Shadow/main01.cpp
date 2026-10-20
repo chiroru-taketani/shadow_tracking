@@ -1,4 +1,4 @@
-//g++ -O3 -std=c++11 main01.cpp -framework OpenGL -framework GLUT $(pkg-config --cflags --libs opencv5) -Wno-deprecated -o shadow_test
+//g++ -O3 -std=c++11 main01.cpp -framework OpenGL -framework GLUT $(pkg-config --cflags --libs opencv5) -Wno-deprecated
 #include <GLUT/glut.h> //OpenGL/GLUTの使用
 #include <math.h>
 #include <opencv2/opencv.hpp> //OpenCV関連ヘッダ
