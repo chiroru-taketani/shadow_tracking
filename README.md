@@ -82,7 +82,13 @@ shadow_tracking/
 └── Shadow_myCobot/                # myCobot 280 (ロボットアーム) を用いた物理光源制御版
     ├── main01_myCobot.cpp         # 影の計算・UDP送信プログラム
     ├── python_control/            # PythonによるUDP受信・myCobot制御環境
+    │   ├── udp_server.py          # UDP受信・myCobot制御サーバー
+    │   └── requirements.txt       # Python依存パッケージ定義
     └── README.md                  # myCobotモジュールの詳細ドキュメント
+
+archive/                           # 過去の実験・プロトタイプ保管庫
+├── shadowtest0621/                # 2026年6〜7月のKinect×LiDAR×2光源影判定実験コード
+└── README.md                      # アーカイブの概要・現行コードとの対応
 ```
 
 ---
@@ -292,11 +298,20 @@ g++ -O3 -std=c++11 main.cpp $(pkg-config --cflags --libs opencv4) \
 ### scan（CMake）
 
 ```bash
-cd scan/build
+mkdir -p scan/build && cd scan/build
 cmake ..
 make
 cd ../..
 ./scan/build/PointCloudToMesh
+```
+
+### Shadow_myCobot Python環境（myCobot制御）
+
+```bash
+cd Shadow_myCobot/python_control
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ### Arduino
@@ -317,6 +332,8 @@ Arduino IDE または PlatformIO で `.ino` ファイルを ESP32 にアップ�
 | ESP32-HUB75-MatrixPanel-I2S-DMA | LEDマトリクスパネル制御 |
 | OpenNI 1.x | Kinectデバイスへのアクセス |
 | PCL (Point Cloud Library) | 点群処理・3Dメッシュ生成 |
+| pymycobot | myCobot 280 ロボットアーム制御 |
+| pyserial | シリアル通信 |
 
 ---
 

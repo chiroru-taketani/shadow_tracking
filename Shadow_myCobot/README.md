@@ -47,11 +47,13 @@ LiDARセンサーと**ロボットアーム（myCobot 280）**を連携させ、
 
 ### Python側 (myCobot制御)
 - Python 3.x
-- `pymycobot` ライブラリ
+- 依存パッケージのインストール（仮想環境の作成を推奨）:
   ```bash
-  pip3 install pymycobot
+  cd python_control
+  python3 -m venv .venv
+  source .venv/bin/activate
+  pip install -r requirements.txt
   ```
-  ※または、プロジェクト内の仮想環境（`.venv`）をアクティベートして使用。
 
 ## 実行手順
 アームの初期化や安全確保のため、**必ずPythonサーバーを先に起動**してください。
