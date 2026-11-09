@@ -2,7 +2,10 @@ import socket
 import time
 from pymycobot.mycobot280 import MyCobot280  # myCobot用ライブラリ
 
-# --- 1. 定数の設定（ここの部分が抜けている可能性があります！） ---
+# --- 1. 定数の設定---
+# C++側の光源初期Z座標（scanH / 2.0 + obj_light_dist = 100.0 + 140.0）
+LIGHT_INIT_Z = 240.0
+
 # UDP設定
 UDP_IP = "127.0.0.1"
 UDP_PORT = 5005
@@ -11,15 +14,15 @@ UDP_PORT = 5005
 SERIAL_PORT = "/dev/tty.usbserial-5A491022661"  # ポート番号（Macの環境に合わせて変更）
 BAUD_RATE = 115200
 
-# キャリブレーション（座標オフセット）
-OFFSET_X = 100.0
-OFFSET_Y = 0.0
-OFFSET_Z = 150.0
+# myCobotが安全に動ける基準位置（mm）
+BASE_X = 180.0  #前後
+BASE_Y = 0.0  #左右
+BASE_Z = 180.0 #高さ
 
-# 安全装置（リミット値）
-MIN_X, MAX_X = -200.0, 200.0
-MIN_Y, MAX_Y = -200.0, 200.0
-MIN_Z, MAX_Z = 100.0, 300.0
+# 安全装置（myCobot 280 の可動限界クランプ）
+MIN_X, MAX_X = 100.0, 240.0 #前後
+MIN_Y, MAX_Y = -150.0, 150.0 #左右
+MIN_Z, MAX_Z = 100.0, 260.0 #高さ
 
 # 安全値に丸める関数（クランプ処理）
 def clamp(val, min_val, max_val):
@@ -36,7 +39,6 @@ def main():
 
         # 最初は安全な姿勢（直立など）で待機させる
         mc.send_angles([0, 0, 0, 0, 90, 0], 30)
-        #mc.send_coords([150.0, 0.0, 200.0, -90, 0, 0], 50, 1)
         time.sleep(3)
         print("myCobot Connected and Ready!")
     except Exception as e:
@@ -67,10 +69,16 @@ def main():
                     ry = float(parts[4])
                     rz = float(parts[5])
 
-                    # 座標変換（オフセット加算）
-                    target_x = raw_x + OFFSET_X
-                    target_y = raw_y + OFFSET_Y
-                    target_z = raw_z + OFFSET_Z
+                    # 座標変換（C++ -> myCobotベース座標系）
+                    #1. 左右: C++の raw_x を myCobot の Y軸 へ（myCobotは左が+のため反転）
+                    target_y = BASE_Y - raw_x
+
+                    # 2. 上下: C++の raw_y を myCobot の Z軸 へ（初期値64.0からの差分を加算）
+                    target_z = BASE_Z + (raw_y - 64.0)
+
+                    # 3. 前後: C++の raw_z を myCobot の X軸 へ
+                    target_x = BASE_X + (raw_z - LIGHT_INIT_Z)
+
 
                     # ソフトウェアリミット（安全装置）
                     safe_x = clamp(target_x, MIN_X, MAX_X)
@@ -90,7 +98,7 @@ def main():
 
     except KeyboardInterrupt:
         print("\nStopping UDP Server.")
-        print("初期姿勢に戻ります。ぶつからないようご注意ください...")
+        print("初期姿勢に戻ります。")
         try:
             # 初期姿勢（安全な角度）へ移動
             mc.send_angles([0, 0, 0, 0, 90, 0], 50)

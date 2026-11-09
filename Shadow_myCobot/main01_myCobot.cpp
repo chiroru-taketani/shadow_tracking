@@ -99,7 +99,7 @@ unsigned char shadowVal = 255; //影かどうか（0は影）
 double hand_dist = 100; //手の認識距離精度（mm）大きいほど甘くなる
 
 //LEDと物体との距離(mm)
-double obj_light_dist = 90.0;
+double obj_light_dist = 140.0;
 
 //UDP用のグローバル変数
 int udp_sock; //ソケットの番号
