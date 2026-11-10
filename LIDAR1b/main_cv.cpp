@@ -65,6 +65,14 @@ const int ACCUM_FRAMES = 10;    // 蓄積する最新フレーム数 (10フレ�
 const int MAX_HANDS = 1;        // 選択する最大手領域数 (最大2つ)
 double maxTrackDist = 20.0;     // フレーム間同一ラベル判定の最大距離閾値 (cm)
 
+
+//---- 揺れ(ブルブル)抑制 & 遅延解消パラメータ ----
+double accumNormFactor = 0.75; // 蓄積画像の正規化係数 (0.4 -> 0.75: 古い残像のしっぽを切って遅延を解消)
+double deadbandDist = 0.15;    // 静止判定の微小移動閾値 (cm): 1.5mm未満の揺れは完全に無視してピタッと止める
+double fastMoveDist = 1.5;     // 高速移動判定距離 (cm): 1.5cm以上の移動時は平滑化重みを0にして遅延ゼロにする
+double maxSmoothAlpha = 0.80;  // 低速移動時の過去座標の最大重み (0.80 = 過去80% : 最新20%)
+
+
 double scanAreaW, scanAreaH;
 double scanReso;
 cv::Mat scanImage, currentBinImage, accumImage, binImage;
@@ -245,7 +253,7 @@ void display()
         weightSum += weight;
     }
     // 0〜255に正規化して8bit画像へ戻す
-    accumImage.convertTo(binImage, CV_8UC1, 1.0 / (weightSum * 0.4));
+    accumImage.convertTo(binImage, CV_8UC1, 1.0 / (weightSum * accumNormFactor));
 
     // 蓄積画像の閾値処理と小領域除去（モルフォロジー処理）
     cv::threshold(binImage, binImage, 128, 255, cv::THRESH_BINARY);
@@ -316,16 +324,38 @@ void display()
         }
 
         TrackedHand th;
-        if (bestPrevIdx != -1)
+       if (bestPrevIdx != -1)
         {
             prevUsed[bestPrevIdx] = true;
             th.id = trackedHands[bestPrevIdx].id; // 前フレームのラベルIDを継承
+
+            // 速度適応型スムージング（静止時のブルブル抑制と高速移動時の低遅延を両立）
+            Vec_3D prevPos = trackedHands[bestPrevIdx].pos;
+            Vec_3D rawPos = candidates[c].worldPos;
+            if (minDist < deadbandDist)
+            {
+                // 1.5mm未満の微小な揺れはノイズとみなして前回座標を維持（ブルブル完全停止）
+                th.pos = prevPos;
+            }
+            else if (minDist < fastMoveDist)
+            {
+                // 低速〜中速移動時は移動量に応じて過去重み alpha を 0.80 -> 0.0 に線形補間
+                double ratio = (minDist - deadbandDist) / (fastMoveDist - deadbandDist);
+                double alpha = maxSmoothAlpha * (1.0 - ratio);
+                th.pos.x = prevPos.x * alpha + rawPos.x * (1.0 - alpha);
+                th.pos.y = prevPos.y * alpha + rawPos.y * (1.0 - alpha);
+                th.pos.z = prevPos.z * alpha + rawPos.z * (1.0 - alpha);
+            }
+            else
+            {
+                // 1.5cm以上の素早い移動時は遅延ゼロで最新座標に追従
+                th.pos = rawPos;
+            }
         }
-        else
-        {
+        else{
             th.id = nextHandId++; // 新規ラベルIDを付与
+            th.pos = candidates[c].worldPos;
         }
-        th.pos = candidates[c].worldPos;
         th.pixelPos = candidates[c].pixelCentroid;
         th.contourIdx = candidates[c].contourIdx;
         newTrackedHands.push_back(th);
@@ -336,6 +366,7 @@ void display()
               newTrackedHands.end(),
               [](const TrackedHand &a, const TrackedHand &b) { return a.id < b.id; });
     trackedHands = newTrackedHands;
+
 
     // 検出・追跡結果の描画
     for (int i = 0; i < (int)trackedHands.size(); i++)
