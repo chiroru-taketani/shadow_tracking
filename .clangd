@@ -1,0 +1,11 @@
+CompileFlags:
+  Add:
+    - -I/opt/homebrew/opt/opencv/include/opencv5
+    - -I/opt/homebrew/include
+    - -I/Users/x22067xx/Documents/lab/shadow_tracking/LIDAR1b
+    - -I/Users/x22067xx/Documents/lab/shadow_tracking/Shadow
+    - -std=c++11
+    - -Wno-deprecated
+Diagnostics:
+  ClangTidy:
+    Remove: ["*"]

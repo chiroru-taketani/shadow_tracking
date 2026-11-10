@@ -1,95 +1,114 @@
-// LiDAR
+// LiDAR (Paper Sec. 2.2 Specification: 10-frame accumulation, area range, top-2 selection, inter-frame distance labeling)
 /*
- * g++ -O3 main_cv.cpp -std=c++11 `pkg-config --cflags --libs opencv5` -framework OpenGL -framework GLUT Connection_information.cpp liburg_cpp.a -Wno-deprecated
+ * g++ -O3 main_cv.cpp -std=c++11 $(pkg-config --cflags --libs opencv5) -framework OpenGL -framework GLUT Connection_information.cpp liburg_cpp.a -Wno-deprecated -o a.out
  */
-#include <iostream>                 // 標準入出力
-#include <time.h>                   // 時間関連
-#include <math.h>                   // 数学関数 (sin, cos, sqrt, tan, M_PI)
-#include <opencv2/opencv.hpp>       // 画像処理ライブラリ OpenCV
-#include <opencv2/geometry.hpp>     // ← これを追加（OpenCV 5用）
-#include <GLUT/glut.h>              // グラフィックスライブラリ GLUT (OpenGLの補助)
-#include "Urg_driver.h"             // URGセンサー用ドライバ
 #include "Connection_information.h" // URGセンサーの接続情報用
+#include "Urg_driver.h"             // URGセンサー用ドライバ
+#include <GLUT/glut.h>              // グラフィックスライブラリ GLUT (OpenGLの補助)
+#include <algorithm>                // std::sort 用
+#include <deque>                    // 10フレーム蓄積用のリングバッファ
+#include <iostream>                 // 標準入出力
+#include <math.h>                   // 数学関数 (sin, cos, sqrt, tan, M_PI)
+#include <opencv2/geometry.hpp>     // OpenCV 5: moments, contourArea 用
+#include <opencv2/opencv.hpp>       // 画像処理ライブラリ OpenCV
+#include <time.h>                   // 時間関連
+#include <vector>
 
 // URGセンサーのモデルに応じてデータ数を定義
-// #define DATASIZE 1440 // 例: UST-20LX-H01
-#define DATASIZE 513 // 例: UBG-04LX-F01
+#define DATASIZE 513 // UBG-04LX-F01
 
-// 三次元ベクトルを格納するための構造体: Vec_3D
+// 三次元ベクトル構造体
 typedef struct _Vec_3D
 {
     double x, y, z;
 } Vec_3D;
 
+// 候補領域（距離ソート用）
+struct HandCandidate
+{
+    int contourIdx;
+    cv::Point pixelCentroid;
+    Vec_3D worldPos;
+    double distFromPanel;
+};
+
+// フレーム間距離ラベリング追跡用の構造体
+struct TrackedHand
+{
+    int id;              // ラベルID (0 or 1)
+    Vec_3D pos;          // 実世界座標 (cm)
+    cv::Point pixelPos;  // 描画用ピクセル座標
+    int contourIdx;      // 今フレームの対応輪郭インデックス
+};
+
 //---- 関数プロトタイプ宣言 ----
-void display();                                 // 描画処理を行うコールバック関数
-void reshape(int w, int h);                     // ウィンドウサイズ変更時に呼ばれるコールバック関数
-void timer(int value);                          // 一定時間ごとに呼ばれるコールバック関数
-void keyboard(unsigned char key, int x, int y); // キーボード入力時に呼ばれるコールバック関数
-void initGL();                                  // OpenGLおよび各種設定の初期化を行う関数
+void display();
+void reshape(int w, int h);
+void timer(int value);
+void keyboard(unsigned char key, int x, int y);
+void initGL();
 
 //---- グローバル変数 ----
-double fr = 30; // フレームレート(fps)
-// OpenGLの座標変換行列を格納する変数 (gluUnProjectで使用)
+double fr = 35; // フレームレート(fps): 論文記述およびUBG-04LX-F01仕様(35fps)に合わせる
 GLdouble model[16], proj[16];
 GLint view[4];
 
-// URGセンサーのドライバインスタンス
 qrk::Urg_driver urg;
-// URGから取得した距離データ(mm)を格納するベクター
 std::vector<long> distData;
 
-//---- スキャン設定 ----
-int scanAngle = 160;         // スキャンする角度の範囲 (正面を0度として±90度)
-double scanAngleStep = 0.35; // URGセンサーの1ステップあたりの角度 (UBG-04LX-F01)
-double objectSize = 600; // 物体の最小面積 (ピクセル)
-// double scanAngleStep = 0.125;  // (UST-20LX-H01の場合)
-double scanAreaW, scanAreaH; // 描画・処理する領域のサイズ(cm) (ファイルから読み込む)
-double scanReso;             // 1画素あたりのサイズ(cm) (ファイルから読み込む)
-cv::Mat scanImage, binImage; // OpenCVで画像処理を行うための画像データ格納用
-cv::Mat element;             // モルフォロジー処理(膨張・収縮)で使用する構造要素
-
-//ノイズ除去のスムージング用関数
-Vec_3D tmpPoint = {0, 0, 0};// 一時保存用座標
-bool isFirst = true; // 初回フラグ
-double smoothFactor = 0.1; // 0.0~1.0 (大きいほど滑らかになるが遅延が発生)
-double moveThreshold = 0.3;//最小移動距離の閾値
+//---- スキャン・パラメータ ----
+int scanAngle = 160;            // スキャン角度範囲 (±80度)
+double scanAngleStep = 0.35;    // UBG-04LX-F01 角度分解能
+double minObjectSize = 600.0;   // 手領域の最小面積閾値 (px)
+double maxObjectSize = 25000.0; // 手領域の最大面積閾値 (px)
+const int ACCUM_FRAMES = 10;    // 蓄積する最新フレーム数 (10フレーム)
+const int MAX_HANDS = 2;        // 選択する最大手領域数 (最大2つ)
+double maxTrackDist = 20.0;     // フレーム間同一ラベル判定の最大距離閾値 (cm)
 
 
+//---- 揺れ(ブルブル)抑制 & 遅延解消パラメータ ----
+double accumNormFactor = 0.75; // 蓄積画像の正規化係数 (0.4 -> 0.75: 古い残像のしっぽを切って遅延を解消)
+double deadbandDist = 0.15;    // 静止判定の微小移動閾値 (cm): 1.5mm未満の揺れは完全に無視してピタッと止める
+double fastMoveDist = 1.5;     // 高速移動判定距離 (cm): 1.5cm以上の移動時は平滑化重みを0にして遅延ゼロにする
+double maxSmoothAlpha = 0.80;  // 低速移動時の過去座標の最大重み (0.80 = 過去80% : 最新20%)
+
+
+double scanAreaW, scanAreaH;
+double scanReso;
+cv::Mat scanImage, currentBinImage, accumImage, binImage;
+std::deque<cv::Mat> frameHistory; // 最新10フレームの二値画像バッファ
+cv::Mat element;
+
+// フレーム間追跡状態
+std::vector<TrackedHand> trackedHands;
+int nextHandId = 0;
 
 //---- ファイル関連 ----
-FILE *fp;                               // ファイルポインタ
-char areaSizeFile[] = "scanarea.txt";   // スキャン領域の設定ファイル名
-char footPointFile[] = "footpoint.txt"; // 検出結果の出力ファイル名
+FILE *fp;
+char areaSizeFile[] = "scanarea.txt";
+char footPointFile[] = "footpoint.txt";
 
-double rDisp = 1.0; // Retinaディスプレイなど高解像度ディスプレイ用の補正値
+double rDisp = 1.0;
 
 //============================================================
-// メイン関数 - プログラムのエントリーポイント
+// メイン関数
 //============================================================
 int main(int argc, char *argv[])
 {
-    // OpenGL(GLUT)ライブラリの初期化
     glutInit(&argc, argv);
 
-    //---- URGセンサーの準備 ----
-    qrk::Connection_information information(argc, argv); // 接続情報(IPアドレス,ポート等)を準備
-    // センサーへ接続
-    if (!urg.open(information.device_or_ip_name(), information.baudrate_or_port_number(), information.connection_type()))
+    qrk::Connection_information information(argc, argv);
+    if (!urg.open(information.device_or_ip_name(),
+                  information.baudrate_or_port_number(),
+                  information.connection_type()))
     {
         printf("URGの接続に失敗しました!\n");
         return 1;
     }
-    // スキャンパラメータ(スキャン範囲)を設定 (-90度から+90度まで)
     urg.set_scanning_parameter(urg.deg2step(-scanAngle / 2), urg.deg2step(scanAngle / 2), 0);
-
-    // 距離データの計測を無限に繰り返すように設定して開始
     urg.start_measurement(qrk::Urg_driver::Distance, qrk::Urg_driver::Infinity_times, 0);
 
-    // OpenGLおよび各種設定の初期化関数を呼び出し
     initGL();
-
-    // GLUTのイベント処理ループを開始。これ以降、登録したコールバック関数がイベントに応じて呼ばれる
     glutMainLoop();
 
     return 0;
@@ -100,56 +119,62 @@ int main(int argc, char *argv[])
 //============================================================
 void initGL()
 {
-    // scanarea.txtファイルを開き、スキャン領域の幅・高さ・解像度を読み込む
     fp = fopen(areaSizeFile, "r");
-    if(fp == NULL){
+    if (fp == NULL)
+    {
         printf("scanarea.txtファイルが開けません\n");
-    }else{
+    }
+    else
+    {
         fscanf(fp, "%lf,%lf,%lf", &scanAreaW, &scanAreaH, &scanReso);
         fclose(fp);
     }
 
-    // 読み込んだ情報に基づき、OpenCVで使う画像領域をメモリ上に確保
-    scanImage = cv::Mat(cv::Size(scanAreaW / scanReso, scanAreaH / scanReso), CV_8UC3); // カラー画像用
-    binImage = cv::Mat(cv::Size(scanAreaW / scanReso, scanAreaH / scanReso), CV_8UC1);  // 白黒(2値)画像用
+    cv::Size imgSize(scanAreaW / scanReso, scanAreaH / scanReso);
+    scanImage = cv::Mat(imgSize, CV_8UC3);
+    currentBinImage = cv::Mat(imgSize, CV_8UC1);
+    accumImage = cv::Mat(imgSize, CV_32FC1);
+    binImage = cv::Mat(imgSize, CV_8UC1);
 
+    glutInitWindowSize(imgSize.width, imgSize.height);
+    glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH | GLUT_DOUBLE);
+    glutInitWindowPosition(0, 0);
+    glutCreateWindow("CG");
 
-    //---- GLUTウィンドウの生成 ----
-    glutInitWindowSize(scanAreaW / scanReso, scanAreaH / scanReso); // ウィンドウサイズ指定
-    glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH | GLUT_DOUBLE);      // ディスプレイモード設定(RGBA色, Zバッファ, ダブルバッファ)
-    glutInitWindowPosition(0, 0);                                   // ウィンドウの表示位置
-    glutCreateWindow("CG");                                         // "CG"というタイトルでウィンドウを生成
+    glutDisplayFunc(display);
+    glutReshapeFunc(reshape);
+    glutKeyboardFunc(keyboard);
+    glutTimerFunc(1000 / fr, timer, 0);
 
-    //---- コールバック関数の登録 ----
-    glutDisplayFunc(display);           // 描画にはdisplay関数を使用
-    glutReshapeFunc(reshape);           // ウィンドウサイズ変更時にはreshape関数を使用
-    glutKeyboardFunc(keyboard);         // キーボード入力時にはkeyboard関数を使用
-    glutTimerFunc(1000 / fr, timer, 0); // 1000/frミリ秒後からtimer関数を呼び出し開始
+    glClearColor(0.0, 0.0, 0.0, 1.0);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, 0.01);
 
-    //---- OpenGLの描画設定 ----
-    glClearColor(0.0, 0.0, 0.0, 1.0);                  // 背景色を黒に設定
-    //glEnable(GL_DEPTH_TEST);                           // 深度テストを有効化 (3D描画で前後関係を正しく描画するため)
-    glEnable(GL_BLEND);                                // アルファブレンディング(透過処理)を有効化
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // ブレンド方法の設定
-    glEnable(GL_ALPHA_TEST);                           // アルファテストを有効化
-    glAlphaFunc(GL_GREATER, 0.01);                     // 透明度が0.01より大きいピクセルのみ描画
-
-    //---- テクスチャの読み込み ----
-    // スキャン点を描画するための画像(mark.png)を読み込む
     cv::Mat textureImage = cv::imread("mark.png", cv::IMREAD_UNCHANGED);
-    if (!textureImage.empty()) {
-        glBindTexture(GL_TEXTURE_2D, 0); // テクスチャID 0番を有効化
+    if (!textureImage.empty())
+    {
+        glBindTexture(GL_TEXTURE_2D, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureImage.cols, textureImage.rows, 0, GL_BGRA, GL_UNSIGNED_BYTE, textureImage.data);
-    } else {
+        glTexImage2D(GL_TEXTURE_2D,
+                     0,
+                     GL_RGBA,
+                     textureImage.cols,
+                     textureImage.rows,
+                     0,
+                     GL_BGRA,
+                     GL_UNSIGNED_BYTE,
+                     textureImage.data);
+    }
+    else
+    {
         printf("mark.png not found!\n");
     }
 
-    // モルフォロジー処理で使用する構造要素(5x5の楕円形)を作成
     element = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
 
-    //確認用ウィンドウの生成
     cv::namedWindow("binImage");
     cv::moveWindow("binImage", 500, 0);
     cv::namedWindow("Scan");
@@ -157,51 +182,38 @@ void initGL()
 }
 
 //============================================================
-// ディスプレイコールバック関数 - 描画処理の本体
+// ディスプレイコールバック関数 - 描画・解析処理
 //============================================================
 void display()
 {
-    //---- [1] LiDARデータをOpenGLで描画 ----
-    //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // 画面(カラーバッファとデプスバッファ)をクリア
+    //---- [1] 現フレームのLiDARスキャン点をOpenGLで描画 ----
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glLoadIdentity();
 
-    glLoadIdentity();                                   // 座標変換行列を初期化
-    glColor4d(0.0,0.0,0.0,0.3);//段々黒くなる
-    glBegin(GL_QUADS);
-    glVertex3d(-0.5 * scanAreaW, 0.0, 0.0);
-    glVertex3d(-0.5 * scanAreaW, scanAreaH, 0.0);
-    glVertex3d(0.5 * scanAreaW, scanAreaH, 0.0);
-    glVertex3d(0.5 * scanAreaW, 0.0, 0.0);
-    glEnd();
+    glEnable(GL_TEXTURE_2D);
+    glColor4d(1.0, 1.0, 1.0, 1.0);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
-    // スキャン点を描画するための設定
-    glEnable(GL_TEXTURE_2D);         // テクスチャマッピングを有効化
-    glColor4d(1.0, 1.0, 1.0, 1.0);   // 描画色を白に設定
-    glBindTexture(GL_TEXTURE_2D, 0); // 使用するテクスチャを選択
-
-    // LiDARから取得した全てのデータ点についてループ
-    for (int i = 0; i < distData.size(); i++)
+    for (int i = 0; i < (int)distData.size(); i++)
     {
-        // スキャン点情報を直交座標(x, y)に変換
-        double len = distData[i] * 0.1; // 距離(mm)をcmに変換
-        if(len < 3.0){//距離が近い点は描画しない
+        double len = distData[i] * 0.1; // mm -> cm
+        if (len < 3.0)
+        {
             continue;
         }
 
-        double rad = urg.index2rad(i);  // i番目のスキャン点の角度(ラジアン)を取得
-        double x = -len * sin(rad);     // i番目のスキャン点のx座標 (センサー座標系→OpenGL座標系)
-        double y = len * cos(rad);      // i番目のスキャン点のy座標 (センサー座標系→OpenGL座標系)
-        double z = 0;                   // 2Dなのでzは0
+        double rad = urg.index2rad(i);
+        double x = -len * sin(rad);
+        double y = len * cos(rad);
+        double z = 0.0;
 
-        // 距離が遠い点ほど大きく描画し、スキャン点間の隙間を埋める
-        // 距離の平方根に比例させることで、変化を緩やかにしている
-        double circleR = 40.0 * sqrt(len) * tan(scanAngleStep * M_PI / 180.0 / 2); // 描画する円の半径を計算
+        double circleR = 40.0 * sqrt(len) * tan(scanAngleStep * M_PI / 180.0 / 2);
 
-        // スキャン点をテクスチャを貼った四角形として描画
-        glPushMatrix();                               // 現在の座標変換行列を保存
-        glTranslated(x, y, z);                        // 計算した座標へ移動
-        glRotated(rad * 180.0 / M_PI, 0.0, 0.0, 1.0); // 描画する四角形を回転
-        glScaled(circleR * 1.5, circleR * 1.0, 1);    // 計算した半径に拡大・縮小
-        glBegin(GL_QUADS);                            // 四角形の描画開始
+        glPushMatrix();
+        glTranslated(x, y, z);
+        glRotated(rad * 180.0 / M_PI, 0.0, 0.0, 1.0);
+        glScaled(circleR * 1.5, circleR * 1.0, 1);
+        glBegin(GL_QUADS);
         glTexCoord2d(0, 0);
         glVertex3d(-0.5, 0.5, 0.0);
         glTexCoord2d(0, 1);
@@ -210,191 +222,230 @@ void display()
         glVertex3d(0.5, -0.5, 0.0);
         glTexCoord2d(1, 0);
         glVertex3d(0.5, 0.5, 0.0);
-        glEnd();       // 描画終了
-        glPopMatrix(); // 保存した座標変換行列を復元
+        glEnd();
+        glPopMatrix();
     }
-    glDisable(GL_TEXTURE_2D); // テクスチャマッピングを無効化
-
-    // ダブルバッファリング: バックバッファに描画した内容をフロントバッファ(画面)に反映
+    glDisable(GL_TEXTURE_2D);
     glutSwapBuffers();
 
-    //---- [2] OpenGLの描画結果をOpenCVで画像処理 ----
-    // OpenGLのフレームバッファからピクセルデータを読み取り、scanImageに格納
+    //---- [2] 最新10フレームの二値画像蓄積・減衰とノイズ除去 ----
     glReadPixels(0, 0, scanImage.cols, scanImage.rows, GL_BGR, GL_UNSIGNED_BYTE, scanImage.data);
-    cv::flip(scanImage, scanImage, 0);// 画像が上下逆に読み込まれるため、垂直方向に反転
-    cv::cvtColor(scanImage, binImage, cv::COLOR_BGR2GRAY); // 処理のためにグレースケール画像に変換
-    cv::threshold(binImage, binImage,128,255,cv::THRESH_BINARY);
+    cv::flip(scanImage, scanImage, 0);
+    cv::cvtColor(scanImage, currentBinImage, cv::COLOR_BGR2GRAY);
+    cv::threshold(currentBinImage, currentBinImage, 128, 255, cv::THRESH_BINARY);
 
-    // モルフォロジー処理でノイズ除去と領域の結合を行う
-    cv::dilate(binImage, binImage, element, cv::Point(-1, -1), 2); // 2回膨張させて、スキャン点間の隙間を埋める
-    cv::erode(binImage,
-              binImage,
-              element,
-              cv::Point(-1, -1),
-              4); // 2回収縮させて、膨張した領域を元に戻しつつ、ノイズを除去
+    // 最新10フレームのキューに追加
+    frameHistory.push_front(currentBinImage.clone());
+    if ((int)frameHistory.size() > ACCUM_FRAMES)
+    {
+        frameHistory.pop_back();
+    }
 
-    cv::dilate(binImage, binImage, element, cv::Point(-1, -1), 2); // 2回膨張させて、スキャン点間の隙間を埋める
-    cv::erode(binImage,
-              binImage,
-              element,
-              cv::Point(-1, -1),
-              2); // 2回収縮させて、膨張した領域を元に戻しつつ、ノイズを除去
-    cv::dilate(binImage, binImage, element, cv::Point(-1, -1), 5); // 2回膨張させて、スキャン点間の隙間を埋める
+    // 10フレームを段階的に減衰させながら蓄積 (最新フレーム重み 1.0 -> 10フレーム前 0.1)
+    accumImage.setTo(0.0f);
+    double weightSum = 0.0;
+    for (int f = 0; f < (int)frameHistory.size(); f++)
+    {
+        double weight = (double)(ACCUM_FRAMES - f) / (double)ACCUM_FRAMES;
+        cv::Mat floatFrame;
+        frameHistory[f].convertTo(floatFrame, CV_32FC1, weight);
+        accumImage += floatFrame;
+        weightSum += weight;
+    }
+    // 0〜255に正規化して8bit画像へ戻す
+    accumImage.convertTo(binImage, CV_8UC1, 1.0 / (weightSum * accumNormFactor));
 
-    //デバック用ウィンドウ表示
+    // 蓄積画像の閾値処理と小領域除去（モルフォロジー処理）
+    cv::threshold(binImage, binImage, 128, 255, cv::THRESH_BINARY);
+    cv::dilate(binImage, binImage, element, cv::Point(-1, -1), 2);
+    cv::erode(binImage, binImage, element, cv::Point(-1, -1), 4);
+    cv::dilate(binImage, binImage, element, cv::Point(-1, -1), 2);
+    cv::erode(binImage, binImage, element, cv::Point(-1, -1), 2);
+    cv::dilate(binImage, binImage, element, cv::Point(-1, -1), 5);
 
     cv::imshow("binImage", binImage);
 
-    //---- [3] 輪郭検出と重心計算 ----
-    std::vector<std::vector<cv::Point>> contours; // 検出された輪郭の情報を格納するベクター
-    // 画像から輪郭を検出する (RETR_EXTERNAL: 最も外側の輪郭のみを検出)
+    //---- [3] 面積範囲フィルタ・重心計算・最近傍2領域の選択 ----
+    std::vector<std::vector<cv::Point>> contours;
     cv::findContours(binImage, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
-    int closestTargetIndex = -1;
-    double minDistance = 99999999.0;//距離を比較するための初期値
-    Vec_3D closestPointF;//最も近い物体の座標を一時保存する変数
-
-
-    //1, 全ての輪郭をチェックして『一番センサーに近い物体』を探す
-    for (int i = 0; i < contours.size(); i++){//輪郭の数分ループ
-        double area = cv::contourArea(contours[i]);//輪郭の頂点リストから面積を計算
-
-        if(area > objectSize){
-            //対象の物体の重心を計算
+    std::vector<HandCandidate> candidates;
+    for (int i = 0; i < (int)contours.size(); i++)
+    {
+        double area = cv::contourArea(contours[i]);
+        // 面積が定義範囲内 (minObjectSize <= area <= maxObjectSize) の領域を抽出
+        if (area >= minObjectSize && area <= maxObjectSize)
+        {
             cv::Moments m = cv::moments(contours[i]);
-            cv::Point p = cv::Point(m.m10/ m.m00, m.m01/m.m00);
+            if (m.m00 == 0.0)
+                continue;
+            cv::Point p(m.m10 / m.m00, m.m01 / m.m00);
 
-            //現実世界の座標(cm)に変換
             Vec_3D pointF;
             gluUnProject(p.x, binImage.rows - p.y, 0, model, proj, view, &pointF.x, &pointF.y, &pointF.z);
 
-            double distFromSensor = sqrt(pow(pointF.x, 2) + pow(pointF.y, 2));
-
-            if (distFromSensor < minDistance)
-            {
-                minDistance = distFromSensor; // 最小距離を更新
-                closestTargetIndex = i;       // 輪郭の番号を記録
-                closestPointF = pointF;       // 座標を記録
-            }
+            double distFromPanel = sqrt(pointF.x * pointF.x + pointF.y * pointF.y);
+            candidates.push_back({i, p, pointF, distFromPanel});
         }
     }
-    std::vector<Vec_3D> handPoint; // 検出した物体の重心座標を格納するベクター
 
-    // 【ステップ2】一番近い物体が見つかった場合のみ、描画と保存を行う
-    if (closestTargetIndex != -1)
+    // LEDパネル（センサ）に近い順にソートし、最大2領域を選択
+    std::sort(candidates.begin(),
+              candidates.end(),
+              [](const HandCandidate &a, const HandCandidate &b) {
+                  return a.distFromPanel < b.distFromPanel;
+              });
+    if ((int)candidates.size() > MAX_HANDS)
     {
-        // 青色で一番近い物体の輪郭を描画
-        cv::drawContours(scanImage, contours, closestTargetIndex, cv::Scalar(255, 0, 0), 2);
+        candidates.resize(MAX_HANDS);
+    }
 
-        // 描画用に、一番近い物体のピクセル座標を再度求める
-        cv::Moments m = cv::moments(contours[closestTargetIndex]);
-        cv::Point p = cv::Point(m.m10 / m.m00, m.m01 / m.m00);
+    //---- [4] フレーム間距離に基づくラベリング追跡 ----
+    std::vector<TrackedHand> newTrackedHands;
+    std::vector<bool> prevUsed(trackedHands.size(), false);
 
-        // 赤色で重心位置を描画
-        cv::circle(scanImage, p, 5, cv::Scalar(0, 0, 255), -1);
+    for (int c = 0; c < (int)candidates.size(); c++)
+    {
+        int bestPrevIdx = -1;
+        double minDist = maxTrackDist;
 
-        if(isFirst){
-            //初回は最新の座標を基準として保存する
-            tmpPoint = closestPointF;
-            isFirst = false;
-        }else{
-            // 前回座標と今回座標の距離を計算
-            double dx = closestPointF.x - tmpPoint.x;
-            double dy = closestPointF.y - tmpPoint.y;
-            double dist = sqrt(dx * dx + dy * dy);
-
-            //微小なブレ（ノイズ）を無視するため、一定距離(moveThreshold)以上動いた時だけ更新する
-            if(dist > moveThreshold){
-                //// 指数移動平均の計算：(過去の座標 * 重み) + (最新の座標 * (1 - 重み))
-                tmpPoint.x = (tmpPoint.x * smoothFactor) + (closestPointF.x * (1.0 - smoothFactor));
-                tmpPoint.y = (tmpPoint.y * smoothFactor) + (closestPointF.y * (1.0 - smoothFactor));
-                tmpPoint.z = (tmpPoint.z * smoothFactor) + (closestPointF.z * (1.0 - smoothFactor));
+        for (int p = 0; p < (int)trackedHands.size(); p++)
+        {
+            if (prevUsed[p])
+                continue;
+            double dx = candidates[c].worldPos.x - trackedHands[p].pos.x;
+            double dy = candidates[c].worldPos.y - trackedHands[p].pos.y;
+            double d = sqrt(dx * dx + dy * dy);
+            if (d < minDist)
+            {
+                minDist = d;
+                bestPrevIdx = p;
             }
         }
 
-        // ファイル出力用に座標を保存
-        handPoint.push_back(tmpPoint);
-    }else{
-        // なにも見つからなかった場合は初回フラグをリセットし、
-        isFirst =true;
+        TrackedHand th;
+       if (bestPrevIdx != -1)
+        {
+            prevUsed[bestPrevIdx] = true;
+            th.id = trackedHands[bestPrevIdx].id; // 前フレームのラベルIDを継承
+
+            // 速度適応型スムージング（静止時のブルブル抑制と高速移動時の低遅延を両立）
+            Vec_3D prevPos = trackedHands[bestPrevIdx].pos;
+            Vec_3D rawPos = candidates[c].worldPos;
+            if (minDist < deadbandDist)
+            {
+                // 1.5mm未満の微小な揺れはノイズとみなして前回座標を維持（ブルブル完全停止）
+                th.pos = prevPos;
+            }
+            else if (minDist < fastMoveDist)
+            {
+                // 低速〜中速移動時は移動量に応じて過去重み alpha を 0.80 -> 0.0 に線形補間
+                double ratio = (minDist - deadbandDist) / (fastMoveDist - deadbandDist);
+                double alpha = maxSmoothAlpha * (1.0 - ratio);
+                th.pos.x = prevPos.x * alpha + rawPos.x * (1.0 - alpha);
+                th.pos.y = prevPos.y * alpha + rawPos.y * (1.0 - alpha);
+                th.pos.z = prevPos.z * alpha + rawPos.z * (1.0 - alpha);
+            }
+            else
+            {
+                // 1.5cm以上の素早い移動時は遅延ゼロで最新座標に追従
+                th.pos = rawPos;
+            }
+        }
+        else{
+            th.id = nextHandId++; // 新規ラベルIDを付与
+            th.pos = candidates[c].worldPos;
+        }
+        th.pixelPos = candidates[c].pixelCentroid;
+        th.contourIdx = candidates[c].contourIdx;
+        newTrackedHands.push_back(th);
     }
 
-    printf("%ld 個の物体(一番手前のみ)を認識しました\n", handPoint.size()); // (デバッグ用)
+    // ラベルID順に整列して出力順序を安定化
+    std::sort(newTrackedHands.begin(),
+              newTrackedHands.end(),
+              [](const TrackedHand &a, const TrackedHand &b) { return a.id < b.id; });
+    trackedHands = newTrackedHands;
+
+
+    // 検出・追跡結果の描画
+    for (int i = 0; i < (int)trackedHands.size(); i++)
+    {
+        cv::Scalar color = (i == 0) ? cv::Scalar(255, 0, 0) : cv::Scalar(0, 255, 0);
+        cv::drawContours(scanImage, contours, trackedHands[i].contourIdx, color, 2);
+        cv::circle(scanImage, trackedHands[i].pixelPos, 5, cv::Scalar(0, 0, 255), -1);
+        cv::putText(scanImage,
+                    "ID:" + std::to_string(trackedHands[i].id),
+                    trackedHands[i].pixelPos + cv::Point(8, -8),
+                    cv::FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    cv::Scalar(0, 255, 255),
+                    1);
+    }
+
+    printf("%ld 個の手領域を追跡中\n", trackedHands.size());
     printf("===========\n");
 
-    //---- [4] 結果をファイルに出力 ----
-    fp = fopen(footPointFile, "w");          // 出力ファイルを開く (w: 上書きモード)
-    fprintf(fp, "%ld\n", handPoint.size()); // 最初に検出した物体の数を出力
-    for (int i = 0; i < handPoint.size(); i++)
-    { // 各物体の座標を出力
-        fprintf(fp, "%f,%f\n", handPoint[i].x, handPoint[i].y);
+    //---- [5] 結果を footpoint.txt に出力 ----
+    fp = fopen(footPointFile, "w");
+    fprintf(fp, "%ld\n", trackedHands.size());
+    for (int i = 0; i < (int)trackedHands.size(); i++)
+    {
+        fprintf(fp, "%f,%f\n", trackedHands[i].pos.x, trackedHands[i].pos.y);
     }
-    fclose(fp); // ファイルを閉じる
-
-    // OpenCVのウィンドウで、処理結果の画像を表示
-
+    fclose(fp);
 
     cv::imshow("Scan", scanImage);
-
 }
 
 //============================================================
-// リシェイプコールバック関数 - ウィンドウサイズ変更時の処理
+// リシェイプコールバック関数
 //============================================================
 void reshape(int w, int h)
 {
-    // ウィンドウサイズに合わせて、描画領域(ビューポート)を再設定
     glViewport(0, 0, w * rDisp, h * rDisp);
 
-    // 投影変換行列の設定
     glMatrixMode(GL_PROJECTION);
-    glLoadIdentity(); // 行列を初期化
-    // 2D正投影を設定 (左, 右, 下, 上, 前方クリップ, 後方クリップ)
+    glLoadIdentity();
     glOrtho(-scanAreaW * 0.5, scanAreaW * 0.5, 0.0, scanAreaH, -100, 100);
-    glMatrixMode(GL_MODELVIEW); // 行列モードをモデルビューに戻す
+    glMatrixMode(GL_MODELVIEW);
 
-    // gluUnProjectで座標逆変換を行うために、現在の各種行列とビューポート設定を取得・保存しておく
-    glGetDoublev(GL_MODELVIEW_MATRIX, model); // モデルビュー変換行列を"model[]"に格納
-    glGetDoublev(GL_PROJECTION_MATRIX, proj); // 投影変換行列を"proj[]"に格納
-    glGetIntegerv(GL_VIEWPORT, view);         // ビューポート設定を"view[]"に格納
+    glGetDoublev(GL_MODELVIEW_MATRIX, model);
+    glGetDoublev(GL_PROJECTION_MATRIX, proj);
+    glGetIntegerv(GL_VIEWPORT, view);
     for (int i = 0; i < 4; i++)
-    { // Retinaディスプレイ用の補正
+    {
         view[i] /= rDisp;
     }
 }
 
 //============================================================
-// タイマーコールバック関数 - 定期処理
+// タイマーコールバック関数
 //============================================================
 void timer(int value)
 {
-    // 次のタイマーイベントを予約する (これにより、この関数が定期的に呼ばれ続ける)
     glutTimerFunc(1000 / fr, timer, 0);
 
-    // LiDARから最新の距離データを取得する
     long time_stamp = 0;
-    // 2回呼ぶことで、バッファに残っている古いデータを読み飛ばし、より最新のデータを取得する
     for (int i = 0; i < 2; i++)
     {
         urg.get_distance(distData, &time_stamp);
     }
 
-    // ディスプレイイベントを強制的に発生させる。これによりdisplay()関数が呼ばれ、画面が更新される
     glutPostRedisplay();
 }
 
 //============================================================
-// キーボードコールバック関数 - キー入力処理
+// キーボードコールバック関数
 //============================================================
 void keyboard(unsigned char key, int x, int y)
 {
     switch (key)
     {
-    case 27:     // ESCキー(ASCIIコード 27)が押された場合
-        exit(0); // プログラムを終了する
+    case 27:
         urg.close();
+        exit(0);
         break;
-
     default:
         break;
     }
