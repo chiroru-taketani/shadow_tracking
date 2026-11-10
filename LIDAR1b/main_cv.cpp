@@ -1,11 +1,12 @@
 // LiDAR
 /*
- * g++ -O3 main_cv.cpp -std=c++11 `pkg-config --cflags --libs opencv4` -framework OpenGL -framework GLUT Connection_information.cpp liburg_cpp.a -Wno-deprecated
+ * g++ -O3 main_cv.cpp -std=c++11 `pkg-config --cflags --libs opencv5` -framework OpenGL -framework GLUT Connection_information.cpp liburg_cpp.a -Wno-deprecated
  */
 #include <iostream>                 // 標準入出力
 #include <time.h>                   // 時間関連
 #include <math.h>                   // 数学関数 (sin, cos, sqrt, tan, M_PI)
 #include <opencv2/opencv.hpp>       // 画像処理ライブラリ OpenCV
+#include <opencv2/geometry.hpp>     // ← これを追加（OpenCV 5用）
 #include <GLUT/glut.h>              // グラフィックスライブラリ GLUT (OpenGLの補助)
 #include "Urg_driver.h"             // URGセンサー用ドライバ
 #include "Connection_information.h" // URGセンサーの接続情報用
@@ -256,7 +257,7 @@ void display()
 
     //1, 全ての輪郭をチェックして『一番センサーに近い物体』を探す
     for (int i = 0; i < contours.size(); i++){//輪郭の数分ループ
-        double area = contourArea(contours[i]);//輪郭の頂点リストから面積を計算
+        double area = cv::contourArea(contours[i]);//輪郭の頂点リストから面積を計算
 
         if(area > objectSize){
             //対象の物体の重心を計算
