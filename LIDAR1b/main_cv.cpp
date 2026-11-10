@@ -62,7 +62,7 @@ double scanAngleStep = 0.35;    // UBG-04LX-F01 角度分解能
 double minObjectSize = 600.0;   // 手領域の最小面積閾値 (px)
 double maxObjectSize = 25000.0; // 手領域の最大面積閾値 (px)
 const int ACCUM_FRAMES = 10;    // 蓄積する最新フレーム数 (10フレーム)
-const int MAX_HANDS = 1;        // 選択する最大手領域数 (最大2つ)
+const int MAX_HANDS = 2;        // 選択する最大手領域数 (最大2つ)
 double maxTrackDist = 20.0;     // フレーム間同一ラベル判定の最大距離閾値 (cm)
 
 
